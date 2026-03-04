@@ -10,9 +10,12 @@ CREATE TABLE IF NOT EXISTS public.users (
     id            TEXT PRIMARY KEY,
     username      TEXT        NOT NULL UNIQUE,
     email         TEXT        NOT NULL UNIQUE,
-    hashed_password TEXT      NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- If migrating from legacy local-auth schema, remove password hash storage.
+ALTER TABLE public.users
+    DROP COLUMN IF EXISTS hashed_password;
 
 -- Index for fast email look-ups during sign-in
 CREATE INDEX IF NOT EXISTS idx_users_email ON public.users (email);
