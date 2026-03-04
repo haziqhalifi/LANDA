@@ -1,0 +1,57 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.so
+venv/
+.env
+.venv/
+env/
+*.whl
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter
+.ipynb_checkpoints/
+
+# =========================
+# Flutter / Dart
+# =========================
+frontend_flutter/disaster_resilience_ai/.dart_tool/
+frontend_flutter/disaster_resilience_ai/.packages
+frontend_flutter/disaster_resilience_ai/.pub/
+frontend_flutter/disaster_resilience_ai/build/
+frontend_flutter/disaster_resilience_ai/.flutter-plugins
+frontend_flutter/disaster_resilience_ai/.flutter-plugins-dependencies
+*.iml
+*.log
+
+# Android
+frontend_flutter/disaster_resilience_ai/android/.gradle/
+frontend_flutter/disaster_resilience_ai/android/local.properties
+frontend_flutter/disaster_resilience_ai/android/app/debug/
+frontend_flutter/disaster_resilience_ai/android/app/profile/
+frontend_flutter/disaster_resilience_ai/android/app/release/
+
+# iOS
+frontend_flutter/disaster_resilience_ai/ios/Pods/
+frontend_flutter/disaster_resilience_ai/ios/.symlinks/
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
