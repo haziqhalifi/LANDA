@@ -21,3 +21,11 @@ ALGORITHM: str = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
     os.getenv("DISASTER_TOKEN_EXPIRE_MINUTES", "10080")
 )
+
+# ── Supabase ─────────────────────────────────────────────────────────────────
+# Set these in your shell or in a .env file before running the server.
+#   SUPABASE_URL=https://<project-ref>.supabase.co
+#   SUPABASE_KEY=<service_role or anon key>
+
+SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY: str = os.getenv("SUPABASE_KEY", "")
