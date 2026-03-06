@@ -24,8 +24,12 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
 
   LatLng? _userLocation;
   bool _loading = true;
+  bool _usingFallbackLocation = false;
   EvacuationCentre? _nearestCentre;
   List<LatLng> _routePoints = [];
+
+  // Dengkil, Selangor — used as fallback when location is unavailable or outside Malaysia
+  static const _dengkilFallback = LatLng(2.8595, 101.6781);
 
   @override
   void initState() {
@@ -36,9 +40,8 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
   Future<void> _initData() async {
     setState(() => _loading = true);
     try {
-      // 1. Get location
-      final pos = await Geolocator.getCurrentPosition();
-      final userLatLng = LatLng(pos.latitude, pos.longitude);
+      // 1. Get location with Malaysian sanity check + fallback
+      final (userLatLng, isFallback) = await _getSafeLocation();
 
       // 2. Fetch map data (centres/routes)
       final json = await _api.fetchMapData();
@@ -61,28 +64,77 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
         }
       }
 
-      // 4. Fetch real road route to nearest centre
+      // 4. Fetch real road route — only if nearest centre is within 200 km
+      //    (prevents cross-ocean OSRM queries from emulator default location)
       List<LatLng> route = [];
-      if (nearest != null) {
-        final routeData = await _api.fetchRoute(
-          startLat: userLatLng.latitude,
-          startLon: userLatLng.longitude,
-          endLat: nearest.latitude,
-          endLon: nearest.longitude,
-        );
-        route = routeData.map((p) => LatLng(p['lat']!, p['lng']!)).toList();
+      if (nearest != null && minDist < 200) {
+        try {
+          final routeData = await _api.fetchRoute(
+            startLat: userLatLng.latitude,
+            startLon: userLatLng.longitude,
+            endLat: nearest.latitude,
+            endLon: nearest.longitude,
+          );
+          route = routeData.map((p) => LatLng(p['lat']!, p['lng']!)).toList();
+        } catch (_) {
+          // Route fetch failed — navigator will still work without polyline
+        }
       }
 
       if (mounted) {
         setState(() {
           _userLocation = userLatLng;
+          _usingFallbackLocation = isFallback;
           _nearestCentre = nearest;
           _routePoints = route;
           _loading = false;
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _userLocation = _dengkilFallback;
+          _usingFallbackLocation = true;
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  /// Returns (location, isFallback). Uses Dengkil as fallback when
+  /// permission is denied OR when the device reports a non-Malaysian location
+  /// (typical for Android emulators defaulting to Mountain View, CA).
+  Future<(LatLng, bool)> _getSafeLocation() async {
+    try {
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.deniedForever ||
+          perm == LocationPermission.denied) {
+        return (_dengkilFallback, true);
+      }
+
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+
+      // Malaysia bounding box check (lat 0.8–7.5, lon 99.5–120)
+      final inMalaysia = pos.latitude >= 0.8 &&
+          pos.latitude <= 7.5 &&
+          pos.longitude >= 99.5 &&
+          pos.longitude <= 120.0;
+
+      if (!inMalaysia) {
+        return (_dengkilFallback, true);
+      }
+
+      return (LatLng(pos.latitude, pos.longitude), false);
+    } catch (_) {
+      return (_dengkilFallback, true);
     }
   }
 
@@ -378,25 +430,49 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
               ),
               
               const SizedBox(height: 24),
+
+              // Fallback location notice
+              if (_usingFallbackLocation)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(38),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white.withAlpha(80)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.location_searching, color: Colors.white, size: 16),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '📍 Location approximated — showing nearest PPS to Dengkil.',
+                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    if (_userLocation != null && _nearestCentre != null && _routePoints.isNotEmpty) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => EvacuationNavigationPage(
-                            routePoints: _routePoints,
-                            userLocation: _userLocation!,
-                            destination: _nearestCentre!,
-                          ),
-                        ),
-                      );
-                    } else if (_userLocation != null) {
-                      _mapController.move(_userLocation!, 15);
-                    }
-                  },
+                  // Always enabled when nearest centre is found
+                  onPressed: _nearestCentre != null
+                      ? () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => EvacuationNavigationPage(
+                                routePoints: _routePoints,
+                                userLocation: _userLocation ?? _dengkilFallback,
+                                destination: _nearestCentre!,
+                              ),
+                            ),
+                          );
+                        }
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: bgColor,
@@ -412,8 +488,17 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
               ),
               const SizedBox(height: 12),
               Text(
-                w.alertLevel == AlertLevel.evacuate ? 'TAP FOR TURN-BY-TURN NAVIGATION' : 'TAP TO VIEW RECOMMENDED SAFE ROUTES',
-                style: const TextStyle(color: Colors.white70, fontSize: 11, letterSpacing: 1.2, fontWeight: FontWeight.bold),
+                _nearestCentre == null
+                    ? 'LOADING EVACUATION CENTRES...'
+                    : _routePoints.isEmpty
+                        ? 'ROUTE MAP UNAVAILABLE — CENTRE LOCATION SHOWN'
+                        : (w.alertLevel == AlertLevel.evacuate ? 'TAP FOR TURN-BY-TURN NAVIGATION' : 'TAP TO VIEW RECOMMENDED SAFE ROUTES'),
+                style: TextStyle(
+                  color: _routePoints.isEmpty && !_loading ? Colors.yellow : Colors.white70,
+                  fontSize: 11,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 40),
             ],
