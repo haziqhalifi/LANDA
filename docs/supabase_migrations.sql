@@ -73,3 +73,72 @@ CREATE POLICY "Service role full access" ON public.warnings
 
 CREATE POLICY "Service role full access" ON public.devices
     FOR ALL USING (true) WITH CHECK (true);
+
+
+-- ── 4. Risk Zones (AI Risk Mapping) ────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.risk_zones (
+    id            TEXT PRIMARY KEY,
+    name          TEXT        NOT NULL,
+    zone_type     TEXT        NOT NULL CHECK (zone_type IN ('danger', 'warning', 'safe')),
+    hazard_type   TEXT        NOT NULL CHECK (hazard_type IN ('flood', 'landslide', 'typhoon', 'earthquake')),
+    latitude      DOUBLE PRECISION NOT NULL,
+    longitude     DOUBLE PRECISION NOT NULL,
+    radius_km     DOUBLE PRECISION NOT NULL CHECK (radius_km > 0),
+    risk_score    DOUBLE PRECISION NOT NULL DEFAULT 0.0 CHECK (risk_score >= 0 AND risk_score <= 1),
+    description   TEXT        NOT NULL DEFAULT '',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    active        BOOLEAN     NOT NULL DEFAULT true
+);
+
+CREATE INDEX IF NOT EXISTS idx_risk_zones_active ON public.risk_zones (active)
+    WHERE active = true;
+
+
+-- ── 5. Evacuation Centres ──────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.evacuation_centres (
+    id                TEXT PRIMARY KEY,
+    name              TEXT        NOT NULL,
+    latitude          DOUBLE PRECISION NOT NULL,
+    longitude         DOUBLE PRECISION NOT NULL,
+    capacity          INTEGER     NOT NULL CHECK (capacity > 0),
+    current_occupancy INTEGER     NOT NULL DEFAULT 0 CHECK (current_occupancy >= 0),
+    contact_phone     TEXT,
+    address           TEXT        NOT NULL DEFAULT '',
+    active            BOOLEAN     NOT NULL DEFAULT true
+);
+
+
+-- ── 6. Evacuation Routes ──────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.evacuation_routes (
+    id                TEXT PRIMARY KEY,
+    name              TEXT        NOT NULL,
+    start_lat         DOUBLE PRECISION NOT NULL,
+    start_lon         DOUBLE PRECISION NOT NULL,
+    end_lat           DOUBLE PRECISION NOT NULL,
+    end_lon           DOUBLE PRECISION NOT NULL,
+    waypoints         JSONB       NOT NULL DEFAULT '[]',
+    distance_km       DOUBLE PRECISION NOT NULL CHECK (distance_km > 0),
+    estimated_minutes INTEGER     NOT NULL CHECK (estimated_minutes > 0),
+    elevation_gain_m  DOUBLE PRECISION NOT NULL DEFAULT 0,
+    status            TEXT        NOT NULL DEFAULT 'clear' CHECK (status IN ('clear', 'partial', 'blocked')),
+    active            BOOLEAN     NOT NULL DEFAULT true
+);
+
+
+-- ── RLS for new tables ──────────────────────────────────────────────────────
+
+ALTER TABLE public.risk_zones         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.evacuation_centres ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.evacuation_routes  ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access" ON public.risk_zones
+    FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access" ON public.evacuation_centres
+    FOR ALL USING (true) WITH CHECK (true);
+
+CREATE POLICY "Service role full access" ON public.evacuation_routes
+    FOR ALL USING (true) WITH CHECK (true);

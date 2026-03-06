@@ -135,4 +135,123 @@ class ApiService {
     }
     return 'Request failed with status ${response.statusCode}';
   }
+
+  // ── Hyper-Local Early Warnings ──────────────────────────────────────────
+
+  /// Fetch active warnings near a specific coordinate.
+  /// This is the core "hyper-local" feature — only returns warnings whose
+  /// affected zone covers the user's current location.
+  Future<Map<String, dynamic>> fetchNearbyWarnings({
+    required double latitude,
+    required double longitude,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/warnings/nearby/').replace(
+      queryParameters: {
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+      },
+    );
+    final response = await _client.get(uri);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Failed to fetch nearby warnings: ${response.statusCode}');
+  }
+
+  /// Fetch all active warnings (optionally filtered).
+  Future<Map<String, dynamic>> fetchWarnings({
+    bool activeOnly = true,
+    String? hazardType,
+    String? alertLevel,
+  }) async {
+    final params = <String, String>{
+      'active_only': activeOnly.toString(),
+    };
+    if (hazardType != null) params['hazard_type'] = hazardType;
+    if (alertLevel != null) params['alert_level'] = alertLevel;
+
+    final uri = Uri.parse('$baseUrl/api/v1/warnings').replace(
+      queryParameters: params,
+    );
+    final response = await _client.get(uri);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Failed to fetch warnings: ${response.statusCode}');
+  }
+
+  /// Get a single warning by ID.
+  Future<Map<String, dynamic>> fetchWarning(String warningId) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/warnings/$warningId'),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Warning not found');
+  }
+
+  /// Update the authenticated user's GPS location so the backend
+  /// can send hyper-local warnings.
+  Future<Map<String, dynamic>> updateLocation({
+    required String accessToken,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl/api/v1/devices/me/location'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode({
+        'latitude': latitude,
+        'longitude': longitude,
+      }),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Failed to update location: ${response.statusCode}');
+  }
+
+  /// Register device for push notifications and/or SMS fallback.
+  Future<Map<String, dynamic>> registerDevice({
+    required String accessToken,
+    String? fcmToken,
+    String? phoneNumber,
+  }) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl/api/v1/devices/me/device'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode({
+        if (fcmToken != null) 'fcm_token': fcmToken,
+        if (phoneNumber != null) 'phone_number': phoneNumber,
+      }),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Failed to register device: ${response.statusCode}');
+  }
+
+  // ── AI Risk Mapping ──────────────────────────────────────────────────────
+
+  /// Fetch all map data: risk zones, evacuation centres, and routes.
+  Future<Map<String, dynamic>> fetchMapData({String? hazardType}) async {
+    final params = <String, String>{};
+    if (hazardType != null) params['hazard_type'] = hazardType;
+
+    final uri = Uri.parse('$baseUrl/api/v1/risk-map').replace(
+      queryParameters: params.isNotEmpty ? params : null,
+    );
+    final response = await _client.get(uri);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Failed to fetch map data: ${response.statusCode}');
+  }
 }
