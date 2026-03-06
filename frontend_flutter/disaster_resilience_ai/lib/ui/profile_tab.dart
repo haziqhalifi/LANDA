@@ -246,9 +246,27 @@ class _ProfileTabState extends State<ProfileTab> {
             ),
             const SizedBox(height: 16),
 
-            _buildSettingItem(Icons.notifications_outlined, 'Notifications', 'Push & SMS Alerts', true),
-            _buildSettingItem(Icons.language, 'Language', 'English', false),
-            _buildSettingItem(Icons.location_on_outlined, 'Residency', 'Dengkil, Selangor', false),
+            _buildSettingItem(
+              Icons.notifications_outlined,
+              'Notifications',
+              'Push & SMS Alerts',
+              true,
+              onTap: () {},
+            ),
+            _buildSettingItem(
+              Icons.language,
+              'Language',
+              'English',
+              false,
+              onTap: () {},
+            ),
+            _buildSettingItem(
+              Icons.location_on_outlined,
+              'Residency',
+              'Dengkil, Selangor',
+              false,
+              onTap: () {},
+            ),
 
             const SizedBox(height: 32),
 
@@ -345,8 +363,14 @@ class _ProfileTabState extends State<ProfileTab> {
     );
   }
 
-  Widget _buildSettingItem(IconData icon, String title, String subtitle, bool hasToggle) {
-    return Container(
+  Widget _buildSettingItem(
+    IconData icon,
+    String title,
+    String subtitle,
+    bool hasToggle, {
+    VoidCallback? onTap,
+  }) {
+    final content = Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -398,6 +422,16 @@ class _ProfileTabState extends State<ProfileTab> {
             Icon(Icons.chevron_right, color: Colors.grey[400]),
         ],
       ),
+    );
+
+    if (onTap == null) {
+      return content;
+    }
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: content,
     );
   }
 }

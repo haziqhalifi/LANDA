@@ -684,7 +684,9 @@ class _HomePageState extends State<HomePage> {
               backgroundColor: const Color(0xFFE8F5E9),
               child: IconButton(
                 icon: const Icon(Icons.person_outline, color: Color(0xFF2E7D32)),
-                onPressed: _logout,
+                onPressed: () {
+                  setState(() => _selectedIndex = 3);
+                },
               ),
             ),
           ),
