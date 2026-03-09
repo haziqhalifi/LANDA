@@ -235,9 +235,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildDashboard() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return RefreshIndicator(
       onRefresh: _fetchWarnings,
-      color: const Color(0xFF2E7D32),
+      color: colorScheme.primary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: Column(
@@ -249,9 +252,11 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   _buildStatusCard(),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
+                  _buildPrimaryActions(),
+                  const SizedBox(height: 26),
                   // ── Active Warnings section (max 3) ──────────────────
                   _buildSectionHeader(
                     'Active Warnings',
@@ -284,7 +289,7 @@ class _HomePageState extends State<HomePage> {
                   _buildNewsSection(),
                   const SizedBox(height: 24),
                   // ── Quick Actions ─────────────────────────────────────
-                  _buildSectionHeader('Quick Actions', null, null),
+                  _buildSectionHeader('Preparedness Tools', null, null),
                   const SizedBox(height: 12),
                   GridView.count(
                     crossAxisCount: 2,
@@ -292,11 +297,13 @@ class _HomePageState extends State<HomePage> {
                     physics: const NeverScrollableScrollPhysics(),
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
-                    childAspectRatio: 1.15,
+                    childAspectRatio: 1.1,
                     children: [
                       _buildActionCard(
                         icon: Icons.campaign_outlined,
-                        title: 'Community\nReport',
+                        title: 'Community Report',
+                        subtitle: 'Submit local updates',
+                        accentColor: Colors.orange,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -306,7 +313,9 @@ class _HomePageState extends State<HomePage> {
                       ),
                       _buildActionCard(
                         icon: Icons.school_outlined,
-                        title: 'School\nRegistry',
+                        title: 'School Registry',
+                        subtitle: 'Track school readiness',
+                        accentColor: Colors.indigo,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -317,6 +326,8 @@ class _HomePageState extends State<HomePage> {
                       _buildActionCard(
                         icon: Icons.directions_run,
                         title: 'Safe Routes',
+                        subtitle: 'Fastest evacuation path',
+                        accentColor: Colors.green,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -326,7 +337,9 @@ class _HomePageState extends State<HomePage> {
                       ),
                       _buildActionCard(
                         icon: Icons.phone_outlined,
-                        title: 'Emergency\nContacts',
+                        title: 'Emergency Contacts',
+                        subtitle: 'Critical numbers nearby',
+                        accentColor: Colors.red,
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -353,25 +366,99 @@ class _HomePageState extends State<HomePage> {
         : hour < 17
         ? 'Good Afternoon'
         : 'Good Evening';
+
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
-      decoration: const BoxDecoration(color: Color(0xFFF1F8E9)),
-      child: Column(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            colorScheme.primaryContainer,
+            colorScheme.tertiaryContainer.withAlpha(224),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withAlpha(18),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '$greeting, ${widget.username} 👋',
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1B5E20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colorScheme.onPrimaryContainer.withAlpha(30),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: Text(
+                    'LIVE MONITORING',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  '$greeting, ${widget.username} 👋',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    color: colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Your community resilience command center',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onPrimaryContainer.withAlpha(220),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 4),
-          const Text(
-            'Stay informed. Stay safe.',
-            style: TextStyle(fontSize: 13, color: Color(0xFF4CAF50)),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: colorScheme.surface.withAlpha(150),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.wifi_tethering_rounded,
+                  size: 18,
+                  color: colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Online',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -389,35 +476,144 @@ class _HomePageState extends State<HomePage> {
       children: [
         Text(
           title,
-          style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF1E293B),
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
         ),
         if (actionLabel != null && onAction != null)
-          GestureDetector(
-            onTap: onAction,
-            child: Text(
-              actionLabel,
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF2E7D32),
-                fontWeight: FontWeight.w600,
-              ),
+          TextButton(
+            onPressed: onAction,
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.primary,
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
+            child: Text(actionLabel),
           ),
       ],
     );
   }
 
+  Widget _buildPrimaryActions() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _buildPrimaryActionChip(
+              icon: Icons.notifications_active_outlined,
+              label: 'Alerts',
+              onPressed: () {
+                if (_nearbyWarnings.isNotEmpty) {
+                  final mostSevere = _nearbyWarnings.reduce(
+                    (a, b) =>
+                        a.alertLevel.severityIndex > b.alertLevel.severityIndex
+                        ? a
+                        : b,
+                  );
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          EmergencyAlertPage(warning: mostSevere),
+                    ),
+                  );
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const EmergencyAlertPage(),
+                    ),
+                  );
+                }
+              },
+              filled: true,
+            ),
+            const SizedBox(width: 8),
+            _buildPrimaryActionChip(
+              icon: Icons.alt_route,
+              label: 'Safe Route',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SafeRoutesPage()),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _buildPrimaryActionChip(
+              icon: Icons.edit_note,
+              label: 'Report',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SubmitReportPage()),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrimaryActionChip({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    bool filled = false,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textStyle = Theme.of(
+      context,
+    ).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700);
+
+    final buttonStyle = OutlinedButton.styleFrom(
+      foregroundColor: colorScheme.onSurface,
+      side: BorderSide(color: colorScheme.outlineVariant),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      textStyle: textStyle,
+    );
+
+    if (filled) {
+      return FilledButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
+        style: FilledButton.styleFrom(
+          backgroundColor: colorScheme.primary,
+          foregroundColor: colorScheme.onPrimary,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: textStyle,
+        ),
+      );
+    }
+
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+      style: buttonStyle,
+    );
+  }
+
   Widget _buildWarningsSection() {
+    final colorScheme = Theme.of(context).colorScheme;
+
     if (_loadingWarnings) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Center(
           child: CircularProgressIndicator(
-            color: Color(0xFF2E7D32),
+            color: colorScheme.primary,
             strokeWidth: 2,
           ),
         ),
@@ -428,7 +624,7 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.orange[50],
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: Colors.orange[200]!),
         ),
         child: Row(
@@ -450,7 +646,7 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: const Color(0xFFF1F8E9),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: const Color(0xFFC8E6C9)),
         ),
         child: const Row(
@@ -491,23 +687,26 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildNewsTile(DisasterNews article) {
-    return GestureDetector(
+    return InkWell(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => NewsDetailPage(article: article)),
       ),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE0E0E0)),
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withAlpha(10),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -539,7 +738,7 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 4),
                   Text(
                     '${article.category} · ${article.readMinutes} min read',
-                    style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                    style: TextStyle(color: Colors.grey[700], fontSize: 11),
                   ),
                 ],
               ),
@@ -858,64 +1057,60 @@ class _HomePageState extends State<HomePage> {
   Widget _buildActionCard({
     required IconData icon,
     required String title,
+    required String subtitle,
+    required Color accentColor,
     required VoidCallback onTap,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFFE8F5E9),
+          color: colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFC8E6C9), width: 1),
+          border: Border.all(color: colorScheme.outlineVariant, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: colorScheme.shadow.withAlpha(12),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(
-                color: Color(0xFFC8E6C9),
-                shape: BoxShape.circle,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: accentColor.withAlpha(30),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: const Color(0xFF2E7D32), size: 32),
+              child: Icon(icon, color: accentColor, size: 24),
             ),
-            const SizedBox(height: 12),
+            const Spacer(),
             Text(
               title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF1B5E20),
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
+              style: TextStyle(
+                color: colorScheme.onSurface,
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant,
+                fontSize: 12,
               ),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  BottomNavigationBarItem _buildNavItem(
-    IconData icon,
-    IconData activeIcon,
-    String label,
-    int index,
-  ) {
-    final isSelected = _selectedIndex == index;
-    return BottomNavigationBarItem(
-      icon: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFE8F5E9) : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Icon(
-          isSelected ? activeIcon : icon,
-          color: isSelected ? const Color(0xFF2E7D32) : Colors.grey,
-        ),
-      ),
-      label: label,
     );
   }
 
@@ -941,81 +1136,61 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: colorScheme.surfaceContainerLowest,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        automaticallyImplyLeading: false,
+        backgroundColor: colorScheme.surface,
+        surfaceTintColor: colorScheme.surfaceTint,
+        scrolledUnderElevation: 1,
         elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.menu, color: Color(0xFF2E7D32)),
-          onPressed: () {},
-        ),
-        title: const Text(
+        centerTitle: false,
+        titleSpacing: 16,
+        toolbarHeight: 64,
+        title: Text(
           'Resilience AI',
-          style: TextStyle(
-            color: Color(0xFF2E7D32),
-            fontWeight: FontWeight.bold,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.headlineSmall?.copyWith(
+            color: colorScheme.primary,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.2,
           ),
         ),
         actions: [
-          // ── Weather mini-widget ─────────────────────────────────────────
-          GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => WeatherPage(
-                    latitude: _userLat,
-                    longitude: _userLon,
-                    locationName: _locationLabel,
-                  ),
-                ),
-              );
-            },
-            child: Container(
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8F5E9),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    _weather?.icon ?? Icons.cloud_outlined,
-                    color: const Color(0xFF2E7D32),
-                    size: 18,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    _weather != null
-                        ? '${_weather!.temperature.round()}°C'
-                        : '--°C',
-                    style: const TextStyle(
-                      color: Color(0xFF2E7D32),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => WeatherPage(
+                      latitude: _userLat,
+                      longitude: _userLon,
+                      locationName: _locationLabel,
                     ),
                   ),
-                ],
+                );
+              },
+              icon: Icon(_weather?.icon ?? Icons.cloud_outlined, size: 18),
+              label: Text(
+                _weather != null
+                    ? '${_weather!.temperature.round()}°C'
+                    : '--°C',
               ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: CircleAvatar(
-              backgroundColor: const Color(0xFFE8F5E9),
-              child: IconButton(
-                icon: const Icon(
-                  Icons.person_outline,
-                  color: Color(0xFF2E7D32),
+              style: TextButton.styleFrom(
+                backgroundColor: colorScheme.secondaryContainer,
+                foregroundColor: colorScheme.onSecondaryContainer,
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
                 ),
-                onPressed: () {
-                  setState(() => _selectedIndex = 3);
-                },
+                minimumSize: const Size(0, 36),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ),
           ),
@@ -1033,44 +1208,36 @@ class _HomePageState extends State<HomePage> {
         tooltip: 'Disaster Assistant',
         child: const Icon(Icons.smart_toy_rounded, color: Colors.white),
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(13),
-              blurRadius: 10,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: (index) => setState(() => _selectedIndex = index),
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.white,
-          selectedItemColor: const Color(0xFF2E7D32),
-          unselectedItemColor: Colors.grey,
-          showUnselectedLabels: true,
-          selectedLabelStyle: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 12,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) =>
+            setState(() => _selectedIndex = index),
+        backgroundColor: colorScheme.surfaceContainerHigh,
+        indicatorColor: colorScheme.secondaryContainer,
+        shadowColor: colorScheme.shadow.withAlpha(32),
+        elevation: 4,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
           ),
-          unselectedLabelStyle: const TextStyle(
-            fontWeight: FontWeight.normal,
-            fontSize: 12,
+          NavigationDestination(
+            icon: Icon(Icons.insert_chart_outlined),
+            selectedIcon: Icon(Icons.insert_chart),
+            label: 'Reports',
           ),
-          items: [
-            _buildNavItem(Icons.home_outlined, Icons.home, 'Home', 0),
-            _buildNavItem(
-              Icons.insert_chart_outlined,
-              Icons.insert_chart,
-              'Reports',
-              1,
-            ),
-            _buildNavItem(Icons.map_outlined, Icons.map, 'Map', 2),
-            _buildNavItem(Icons.person_outline, Icons.person, 'Profile', 3),
-          ],
-        ),
+          NavigationDestination(
+            icon: Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map),
+            label: 'Map',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
       ),
     );
   }

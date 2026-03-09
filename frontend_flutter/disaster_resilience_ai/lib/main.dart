@@ -13,7 +13,7 @@ class DisasterResilienceApp extends StatelessWidget {
     return MaterialApp(
       title: 'Disaster Resilience AI',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: Colors.deepOrange, useMaterial3: true),
+      theme: ThemeData(colorSchemeSeed: Colors.green, useMaterial3: true),
       home: const AuthPage(),
     );
   }
