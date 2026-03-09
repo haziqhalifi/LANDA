@@ -107,7 +107,7 @@ def get_all_devices_with_location() -> list[DeviceRecord]:
     res = (
         sb.table("devices")
         .select("*")
-        .neq("latitude", None)
+        .not_.is_("latitude", "null")
         .execute()
     )
     return res.data
