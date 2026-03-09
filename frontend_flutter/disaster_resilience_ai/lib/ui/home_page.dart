@@ -15,7 +15,6 @@ import 'package:disaster_resilience_ai/ui/emergency_contacts_page.dart';
 import 'package:disaster_resilience_ai/ui/reports_tab.dart';
 import 'package:disaster_resilience_ai/ui/map_tab.dart';
 import 'package:disaster_resilience_ai/ui/profile_tab.dart';
-import 'package:disaster_resilience_ai/ui/family_tab.dart';
 import 'package:disaster_resilience_ai/ui/weather_page.dart';
 import 'package:disaster_resilience_ai/ui/chatbot_page.dart';
 import 'package:disaster_resilience_ai/models/disaster_news_model.dart';
@@ -1013,15 +1012,6 @@ class _HomePageState extends State<HomePage> {
         return const ReportsTab();
       case 2:
         return const MapTab();
-      case 3:
-        return FamilyTab(accessToken: widget.accessToken);
-      case 4:
-        return ProfileTab(
-          accessToken: widget.accessToken,
-          username: widget.username,
-          email: widget.email,
-          onLogout: _logout,
-        );
       default:
         return _buildDashboard();
     }
@@ -1102,7 +1092,17 @@ class _HomePageState extends State<HomePage> {
                   color: Color(0xFF2E7D32),
                 ),
                 onPressed: () {
-                  setState(() => _selectedIndex = 4);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ProfileTab(
+                        accessToken: widget.accessToken,
+                        username: widget.username,
+                        email: widget.email,
+                        onLogout: _logout,
+                      ),
+                    ),
+                  );
                 },
               ),
             ),
@@ -1156,8 +1156,6 @@ class _HomePageState extends State<HomePage> {
               1,
             ),
             _buildNavItem(Icons.map_outlined, Icons.map, 'Map', 2),
-            _buildNavItem(Icons.group_outlined, Icons.group, 'Family', 3),
-            _buildNavItem(Icons.person_outline, Icons.person, 'Profile', 4),
           ],
         ),
       ),
