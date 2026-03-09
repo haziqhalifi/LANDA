@@ -148,11 +148,17 @@ class _AuthPageState extends State<AuthPage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final bg = theme.scaffoldBackgroundColor;
+    final muted = isDark ? const Color(0xFFA7B5A8) : Colors.grey;
+    final heading = isDark ? const Color(0xFFE8F5E9) : const Color(0xFF1E293B);
+
     if (_restoring) {
-      return const Scaffold(
-        backgroundColor: Colors.white,
+      return Scaffold(
+        backgroundColor: bg,
         body: Center(
-          child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
+          child: const CircularProgressIndicator(color: Color(0xFF2E7D32)),
         ),
       );
     }
@@ -160,9 +166,9 @@ class _AuthPageState extends State<AuthPage> {
     final title = _isSignIn ? 'Welcome Back' : 'Create Account';
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: bg,
         elevation: 0,
         centerTitle: true,
         title: const Text(
@@ -185,12 +191,16 @@ class _AuthPageState extends State<AuthPage> {
                 children: [
                   Container(
                     padding: const EdgeInsets.all(20),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFE8F5E9),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF233124)
+                          : const Color(0xFFE8F5E9),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      _isSignIn ? Icons.lock_outline : Icons.person_add_outlined,
+                      _isSignIn
+                          ? Icons.lock_outline
+                          : Icons.person_add_outlined,
                       size: 64,
                       color: const Color(0xFF2E7D32),
                     ),
@@ -198,21 +208,18 @@ class _AuthPageState extends State<AuthPage> {
                   const SizedBox(height: 24),
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
+                      color: heading,
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _isSignIn 
-                      ? 'Sign in to monitor your community' 
-                      : 'Join us to stay resilient',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
-                    ),
+                    _isSignIn
+                        ? 'Sign in to monitor your community'
+                        : 'Join us to stay resilient',
+                    style: TextStyle(fontSize: 14, color: muted),
                   ),
                   const SizedBox(height: 32),
                   if (!_isSignIn)
@@ -221,9 +228,11 @@ class _AuthPageState extends State<AuthPage> {
                       textInputAction: TextInputAction.next,
                       decoration: InputDecoration(
                         labelText: 'Username',
-                        labelStyle: const TextStyle(color: Colors.grey),
+                        labelStyle: TextStyle(color: muted),
                         filled: true,
-                        fillColor: Colors.grey[50],
+                        fillColor: isDark
+                            ? const Color(0xFF1E2720)
+                            : Colors.grey[50],
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(color: Colors.grey[300]!),
@@ -234,9 +243,11 @@ class _AuthPageState extends State<AuthPage> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Color(0xFF4CAF50)),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF4CAF50),
+                          ),
                         ),
-                        prefixIcon: const Icon(Icons.person_outline, color: Colors.grey),
+                        prefixIcon: Icon(Icons.person_outline, color: muted),
                       ),
                       validator: (value) {
                         final text = (value ?? '').trim();
@@ -253,9 +264,11 @@ class _AuthPageState extends State<AuthPage> {
                     textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       labelText: 'Email',
-                      labelStyle: const TextStyle(color: Colors.grey),
+                      labelStyle: TextStyle(color: muted),
                       filled: true,
-                      fillColor: Colors.grey[50],
+                      fillColor: isDark
+                          ? const Color(0xFF1E2720)
+                          : Colors.grey[50],
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(color: Colors.grey[300]!),
@@ -268,7 +281,7 @@ class _AuthPageState extends State<AuthPage> {
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(color: Color(0xFF4CAF50)),
                       ),
-                      prefixIcon: const Icon(Icons.email_outlined, color: Colors.grey),
+                      prefixIcon: Icon(Icons.email_outlined, color: muted),
                     ),
                     validator: (value) {
                       final text = (value ?? '').trim();
@@ -284,9 +297,11 @@ class _AuthPageState extends State<AuthPage> {
                     obscureText: true,
                     decoration: InputDecoration(
                       labelText: 'Password',
-                      labelStyle: const TextStyle(color: Colors.grey),
+                      labelStyle: TextStyle(color: muted),
                       filled: true,
-                      fillColor: Colors.grey[50],
+                      fillColor: isDark
+                          ? const Color(0xFF1E2720)
+                          : Colors.grey[50],
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(color: Colors.grey[300]!),
@@ -299,7 +314,7 @@ class _AuthPageState extends State<AuthPage> {
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(color: Color(0xFF4CAF50)),
                       ),
-                      prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey),
+                      prefixIcon: Icon(Icons.lock_outline, color: muted),
                     ),
                     validator: (value) {
                       final text = value ?? '';
@@ -312,18 +327,20 @@ class _AuthPageState extends State<AuthPage> {
                   if (_error != null) ...[
                     const SizedBox(height: 16),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
-                        color: Colors.red[50],
+                        color: isDark
+                            ? const Color(0xFF3A2020)
+                            : Colors.red[50],
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: Colors.red[200]!),
                       ),
                       child: Text(
                         _error!,
-                        style: TextStyle(
-                          color: Colors.red[700],
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: Colors.red[700], fontSize: 14),
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -348,7 +365,9 @@ class _AuthPageState extends State<AuthPage> {
                               height: 24,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
                               ),
                             )
                           : Text(

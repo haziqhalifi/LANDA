@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:disaster_resilience_ai/models/profile_model.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
+import 'package:disaster_resilience_ai/theme/app_theme.dart';
 import 'package:disaster_resilience_ai/ui/edit_profile_page.dart';
 
 class ProfileTab extends StatefulWidget {
@@ -26,6 +27,7 @@ class _ProfileTabState extends State<ProfileTab> {
   UserProfile? _profile;
   bool _loading = true;
   String? _error;
+  bool _notificationsEnabled = true;
 
   @override
   void initState() {
@@ -75,10 +77,26 @@ class _ProfileTabState extends State<ProfileTab> {
 
   @override
   Widget build(BuildContext context) {
+    const Color primary = Color(0xFF2D5927);
+    final theme = Theme.of(context);
+    final themeController = AppThemeScope.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final pageBg = theme.scaffoldBackgroundColor;
+    final surface = isDark ? const Color(0xFF1B251B) : Colors.white;
+    final subtleSurface = isDark
+        ? const Color(0xFF233124)
+        : const Color(0xFFF1F5F9);
+    final border = isDark ? const Color(0xFF334236) : const Color(0xFFE2E8F0);
+    final secondaryText = isDark
+        ? const Color(0xFFA7B5A8)
+        : const Color(0xFF64748B);
+    final tertiaryText = isDark
+        ? const Color(0xFF8A9A8B)
+        : const Color(0xFF94A3B8);
+    final titleColor = theme.colorScheme.onSurface;
+
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
-      );
+      return const Center(child: CircularProgressIndicator(color: primary));
     }
 
     if (_error != null) {
@@ -100,302 +118,477 @@ class _ProfileTabState extends State<ProfileTab> {
     }
 
     final profile = _profile!;
+    final displayName = profile.fullName?.isNotEmpty == true
+        ? profile.fullName!
+        : widget.username;
+    final emergencyName = profile.emergencyContactName ?? 'Emergency Contact';
+    final emergencyLabel = [
+      if (profile.emergencyContactRelationship?.isNotEmpty == true)
+        profile.emergencyContactRelationship!,
+      if (profile.emergencyContactPhone?.isNotEmpty == true)
+        profile.emergencyContactPhone!,
+    ].join(' • ');
+    final resilienceId =
+        'RAI-${profile.userId.replaceAll(RegExp(r'[^0-9A-Za-z]'), '').toUpperCase().padLeft(4, '0').substring(0, 4)}';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: pageBg,
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 16),
-            // Avatar
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF2E7D32), width: 3),
-              ),
-              child: CircleAvatar(
-                radius: 48,
-                backgroundColor: const Color(0xFFE8F5E9),
-                child: Text(
-                  widget.username.isNotEmpty
-                      ? widget.username[0].toUpperCase()
-                      : 'U',
-                  style: const TextStyle(
-                    color: Color(0xFF2E7D32),
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              profile.fullName?.isNotEmpty == true
-                  ? profile.fullName!
-                  : widget.username,
-              style: const TextStyle(
-                color: Color(0xFF1E293B),
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              widget.email,
-              style: const TextStyle(color: Colors.grey, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE8F5E9),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                'Community Volunteer',
-                style: TextStyle(
-                  color: Color(0xFF2E7D32),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // Stats Row
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.03),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  _buildStatColumn('14', 'Reports\nSubmitted'),
-                  Container(width: 1, height: 40, color: Colors.grey[200]),
-                  _buildStatColumn('3', 'Drills\nCompleted'),
-                  Container(width: 1, height: 40, color: Colors.grey[200]),
-                  _buildStatColumn('89%', 'Accuracy\nScore'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Emergency Info Section
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Emergency Info',
-                  style: TextStyle(
-                    color: Color(0xFF1E293B),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
+                const SizedBox(width: 40),
+                Expanded(
+                  child: Text(
+                    'Your Profile',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: titleColor,
+                    ),
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: _editProfile,
-                  icon: const Icon(Icons.edit, size: 18),
-                  label: const Text('Edit'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF2E7D32),
+                SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _editProfile,
+                    icon: const Icon(Icons.settings_outlined),
+                    color: isDark
+                        ? const Color(0xFFA7B5A8)
+                        : const Color(0xFF334155),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.red[50],
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.red[200]!, width: 1),
-              ),
+            const SizedBox(height: 20),
+            Center(
               child: Column(
                 children: [
-                  _buildEmergencyDetail(
-                    Icons.medical_information,
-                    'Medical Info',
-                    'Blood Type: ${profile.bloodType ?? "N/A"} • Allergies: ${profile.allergies.isEmpty ? "None" : profile.allergies}',
+                  Stack(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: primary.withAlpha(38),
+                            width: 4,
+                          ),
+                        ),
+                        child: CircleAvatar(
+                          radius: 56,
+                          backgroundColor: const Color(0xFFE6EFE5),
+                          child: Text(
+                            widget.username.isNotEmpty
+                                ? widget.username[0].toUpperCase()
+                                : 'U',
+                            style: const TextStyle(
+                              color: primary,
+                              fontSize: 42,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 2,
+                        bottom: 2,
+                        child: InkWell(
+                          onTap: _editProfile,
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: const BoxDecoration(
+                              color: primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.edit,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  const Divider(),
-                  const SizedBox(height: 12),
-                  _buildEmergencyDetail(
-                    Icons.phone,
-                    'Emergency Contact',
-                    profile.emergencyContactName != null
-                        ? '${profile.emergencyContactName} • ${profile.emergencyContactPhone}'
-                        : 'Not set',
+                  const SizedBox(height: 14),
+                  Text(
+                    displayName,
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.location_on, size: 15, color: primary),
+                      SizedBox(width: 4),
+                      Text(
+                        'Dengkil, Selangor',
+                        style: TextStyle(
+                          color: primary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      color: primary.withAlpha(22),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      'Resilience ID: $resilienceId',
+                      style: const TextStyle(
+                        color: primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-
-            // Settings Section
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: primary,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: primary.withAlpha(46),
+                          blurRadius: 16,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Preparedness',
+                                style: TextStyle(
+                                  color: Color(0xCCE8F5E9),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            Icon(Icons.verified, color: Colors.white, size: 14),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          '85%',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 26,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            value: 0.85,
+                            minHeight: 5,
+                            color: Colors.white,
+                            backgroundColor: Colors.white24,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Contacts',
+                                style: TextStyle(
+                                  color: secondaryText,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            Icon(Icons.emergency, color: primary, size: 14),
+                          ],
+                        ),
+                        SizedBox(height: 6),
+                        Text(
+                          '3 Active',
+                          style: TextStyle(
+                            fontSize: 23,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Last verified: 2 days ago',
+                          style: TextStyle(color: tertiaryText, fontSize: 10.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                const Text(
+                  'Emergency Contacts',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _editProfile,
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text(
+                    'Add New',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: primary,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _buildContactTile(
+              icon: Icons.person,
+              title: emergencyName,
+              subtitle: emergencyLabel.isNotEmpty
+                  ? emergencyLabel
+                  : 'Primary contact • Not available',
+              surface: surface,
+              subtleSurface: subtleSurface,
+              border: border,
+              secondaryText: secondaryText,
+              tertiaryText: tertiaryText,
+            ),
+            const SizedBox(height: 10),
+            _buildContactTile(
+              icon: Icons.health_and_safety,
+              title: 'Local Community Center',
+              subtitle: 'Medical support • Emergency line',
+              surface: surface,
+              subtleSurface: subtleSurface,
+              border: border,
+              secondaryText: secondaryText,
+              tertiaryText: tertiaryText,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Preparedness Checklist',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: primary.withAlpha(12),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: primary.withAlpha(28)),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _ChecklistItem(
+                    checked: true,
+                    title: 'Emergency Kit Ready',
+                    subtitle:
+                        'Water, non-perishables, and first-aid kit verified.',
+                  ),
+                  SizedBox(height: 14),
+                  _ChecklistItem(
+                    checked: true,
+                    title: 'Offline Maps Downloaded',
+                    subtitle: 'Regional maps available without internet.',
+                  ),
+                  SizedBox(height: 14),
+                  _ChecklistItem(
+                    checked: false,
+                    title: 'Document Backup',
+                    subtitle:
+                        'Scan and upload identity documents for security.',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
             const Align(
               alignment: Alignment.centerLeft,
               child: Text(
                 'Settings',
-                style: TextStyle(
-                  color: Color(0xFF1E293B),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
               ),
             ),
-            const SizedBox(height: 16),
-
+            const SizedBox(height: 8),
             _buildSettingItem(
-              Icons.notifications_outlined,
+              icon: Icons.notifications,
               'Notifications',
-              'Push & SMS Alerts',
-              true,
-              onTap: () {},
+              subtitle: 'Push & SMS alerts',
+              trailing: Switch(
+                value: _notificationsEnabled,
+                onChanged: (value) =>
+                    setState(() => _notificationsEnabled = value),
+                activeTrackColor: primary.withAlpha(120),
+                activeThumbColor: primary,
+              ),
             ),
             _buildSettingItem(
-              Icons.language,
+              icon: Icons.translate,
               'Language',
-              'English',
-              false,
-              onTap: () {},
+              subtitle: 'English (Bahasa available)',
             ),
             _buildSettingItem(
-              Icons.location_on_outlined,
-              'Residency',
-              'Dengkil, Selangor',
-              false,
-              onTap: () {},
+              icon: Icons.dark_mode,
+              'Dark Mode',
+              trailing: Switch(
+                value: themeController.isDarkMode,
+                onChanged: (value) {
+                  themeController.setDarkMode(value);
+                },
+                activeTrackColor: primary.withAlpha(120),
+                activeThumbColor: primary,
+              ),
             ),
-
-            const SizedBox(height: 32),
-
-            // Logout Button
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: widget.onLogout,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red[700],
-                  side: BorderSide(color: Colors.red[300]!),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: widget.onLogout,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 14,
                 ),
-                icon: const Icon(Icons.logout),
-                label: const Text(
-                  'Sign Out',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: const Color(0xFFFFF1F2),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.logout, color: Color(0xFFDC2626)),
+                    SizedBox(width: 10),
+                    Text(
+                      'Log Out',
+                      style: TextStyle(
+                        color: Color(0xFFDC2626),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
             const SizedBox(height: 16),
-            Text(
-              'Resilience AI v1.0.0',
-              style: TextStyle(color: Colors.grey[400], fontSize: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: border),
+              ),
+              child: Text(
+                'Medical: Blood ${profile.bloodType ?? "N/A"} • '
+                'Allergies: ${profile.allergies.isEmpty ? "None" : profile.allergies}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: secondaryText,
+                  height: 1.35,
+                ),
+              ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 20),
+            Center(
+              child: Text(
+                'Resilience AI v1.0.0',
+                style: TextStyle(
+                  color: isDark ? const Color(0xFF8A9A8B) : Colors.grey[500],
+                  fontSize: 12,
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatColumn(String value, String label) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: const TextStyle(
-              color: Color(0xFF2E7D32),
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey[600], fontSize: 11),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmergencyDetail(IconData icon, String title, String subtitle) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.red[100],
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: Colors.red[700]),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: Color(0xFF1E293B),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-              Text(
-                subtitle,
-                style: TextStyle(color: Colors.grey[600], fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSettingItem(
-    IconData icon,
-    String title,
-    String subtitle,
-    bool hasToggle, {
-    VoidCallback? onTap,
+  Widget _buildContactTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color surface,
+    required Color subtleSurface,
+    required Color border,
+    required Color secondaryText,
+    required Color tertiaryText,
   }) {
-    final content = Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(16),
+    return Container(
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: surface,
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: border),
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xFFE8F5E9),
-              borderRadius: BorderRadius.circular(8),
+              color: subtleSurface,
+              borderRadius: BorderRadius.circular(999),
             ),
-            child: Icon(icon, color: const Color(0xFF2E7D32), size: 20),
+            child: Icon(icon, color: secondaryText, size: 20),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -403,40 +596,142 @@ class _ProfileTabState extends State<ProfileTab> {
                 Text(
                   title,
                   style: const TextStyle(
-                    color: Color(0xFF1E293B),
-                    fontWeight: FontWeight.bold,
                     fontSize: 14,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 1),
                 Text(
                   subtitle,
-                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                  style: TextStyle(fontSize: 12, color: secondaryText),
                 ),
               ],
             ),
           ),
-          if (hasToggle)
-            Switch(
-              value: true,
-              onChanged: (_) {},
-              activeThumbColor: Colors.white,
-              activeTrackColor: const Color(0xFF2E7D32),
-            )
-          else
-            Icon(Icons.chevron_right, color: Colors.grey[400]),
+          Icon(Icons.chevron_right, color: tertiaryText),
         ],
       ),
     );
+  }
 
-    if (onTap == null) {
-      return content;
-    }
+  Widget _buildSettingItem(
+    String title, {
+    required IconData icon,
+    String? subtitle,
+    Widget? trailing,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? const Color(0xFF1B251B) : Colors.white;
+    final iconColor = isDark
+        ? const Color(0xFFA7B5A8)
+        : const Color(0xFF475569);
+    final subtitleColor = isDark
+        ? const Color(0xFFA7B5A8)
+        : const Color(0xFF64748B);
+    final tertiaryText = isDark
+        ? const Color(0xFF8A9A8B)
+        : const Color(0xFF94A3B8);
 
     return InkWell(
-      onTap: onTap,
+      onTap: trailing == null ? _editProfile : null,
       borderRadius: BorderRadius.circular(12),
-      child: content,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: iconColor, size: 21),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 12, color: subtitleColor),
+                    ),
+                ],
+              ),
+            ),
+            trailing ?? Icon(Icons.chevron_right, color: tertiaryText),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChecklistItem extends StatelessWidget {
+  const _ChecklistItem({
+    required this.checked,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final bool checked;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    const Color primary = Color(0xFF2D5927);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(
+            checked ? Icons.check_circle : Icons.radio_button_unchecked,
+            size: 19,
+            color: checked ? primary : const Color(0xFFCBD5E1),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: checked
+                      ? (isDark
+                            ? const Color(0xFFE8F5E9)
+                            : const Color(0xFF0F172A))
+                      : const Color(0xFF94A3B8),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: checked
+                      ? (isDark
+                            ? const Color(0xFFA7B5A8)
+                            : const Color(0xFF64748B))
+                      : const Color(0xFF94A3B8),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

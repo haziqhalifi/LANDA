@@ -846,31 +846,47 @@ class _HomePageState extends State<HomePage> {
     required IconData selectedIcon,
   }) {
     const Color navPrimary = Color(0xFF2D5927);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final navInactive = isDark
+        ? const Color(0xFF9AA79B)
+        : const Color(0xFF66726A);
+
+    Widget navItem({required bool isSelected}) {
+      return SizedBox(
+        width: 88,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? navPrimary.withAlpha(18) : Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSelected ? selectedIcon : icon,
+                size: 24,
+                color: isSelected ? navPrimary : navInactive,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? navPrimary : navInactive,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return NavigationDestination(
       label: label,
-      icon: Icon(icon),
-      selectedIcon: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: navPrimary.withAlpha(18),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(selectedIcon, size: 24, color: navPrimary),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: const TextStyle(
-                color: navPrimary,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
-      ),
+      icon: navItem(isSelected: false),
+      selectedIcon: navItem(isSelected: true),
     );
   }
 
@@ -880,10 +896,10 @@ class _HomePageState extends State<HomePage> {
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7F6),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        backgroundColor: const Color(0xFFF6F7F6),
+        backgroundColor: theme.scaffoldBackgroundColor,
         surfaceTintColor: colorScheme.surfaceTint,
         scrolledUnderElevation: 1,
         elevation: 0,
@@ -961,7 +977,7 @@ class _HomePageState extends State<HomePage> {
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) =>
             setState(() => _selectedIndex = index),
-        backgroundColor: Colors.white,
+        backgroundColor: colorScheme.surface,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
         indicatorColor: Colors.transparent,
         shadowColor: colorScheme.shadow.withAlpha(32),
