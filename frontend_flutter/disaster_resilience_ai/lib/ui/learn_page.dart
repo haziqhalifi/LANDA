@@ -135,8 +135,10 @@ class _LearnPageState extends State<LearnPage> {
       final nearby = <RiskZone>[];
       for (final zone in mapData.riskZones) {
         final dist = _distanceKm(
-          pos.latitude, pos.longitude,
-          zone.latitude, zone.longitude,
+          pos.latitude,
+          pos.longitude,
+          zone.latitude,
+          zone.longitude,
         );
         if (dist <= 50) {
           nearby.add(zone);
@@ -167,7 +169,8 @@ class _LearnPageState extends State<LearnPage> {
     const r = 6371.0;
     final dLat = _rad(lat2 - lat1);
     final dLon = _rad(lon2 - lon1);
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
         math.cos(_rad(lat1)) *
             math.cos(_rad(lat2)) *
             math.sin(dLon / 2) *
@@ -188,8 +191,12 @@ class _LearnPageState extends State<LearnPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final pageBg = isDark ? const Color(0xFF0F140F) : const Color(0xFFF0F2F5);
     final barBg = isDark ? const Color(0xFF1B251B) : Colors.white;
-    final titleColor = isDark ? const Color(0xFFE5E7EB) : const Color(0xFF1E293B);
-    final subtitleColor = isDark ? const Color(0xFF9AA79B) : const Color(0xFF64748B);
+    final titleColor = isDark
+        ? const Color(0xFFE5E7EB)
+        : const Color(0xFF1E293B);
+    final subtitleColor = isDark
+        ? const Color(0xFF9AA79B)
+        : const Color(0xFF64748B);
     final divColor = isDark
         ? const Color(0xFF334236)
         : const Color(0xFF2D5927).withAlpha(26);
@@ -220,14 +227,21 @@ class _LearnPageState extends State<LearnPage> {
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)))
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
+            )
           : _error != null
-              ? Center(child: Text(_error!, style: TextStyle(color: subtitleColor)))
-              : RefreshIndicator(
+          ? Center(
+              child: Text(_error!, style: TextStyle(color: subtitleColor)),
+            )
+          : RefreshIndicator(
               onRefresh: _init,
               color: const Color(0xFF2E7D32),
               child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 20,
+                ),
                 children: [
                   // Header
                   _buildHeader(isDark, titleColor, subtitleColor),
@@ -337,8 +351,12 @@ class _LearnPageState extends State<LearnPage> {
               child: Row(
                 children: [
                   Icon(
-                    riskCount > 0 ? Icons.warning_amber_rounded : Icons.check_circle,
-                    color: riskCount > 0 ? Colors.red[700] : const Color(0xFF2E7D32),
+                    riskCount > 0
+                        ? Icons.warning_amber_rounded
+                        : Icons.check_circle,
+                    color: riskCount > 0
+                        ? Colors.red[700]
+                        : const Color(0xFF2E7D32),
                     size: 18,
                   ),
                   const SizedBox(width: 8),
@@ -350,7 +368,9 @@ class _LearnPageState extends State<LearnPage> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: riskCount > 0 ? Colors.red[700] : const Color(0xFF2E7D32),
+                        color: riskCount > 0
+                            ? Colors.red[700]
+                            : const Color(0xFF2E7D32),
                       ),
                     ),
                   ),
@@ -380,11 +400,18 @@ class _LearnPageState extends State<LearnPage> {
     );
   }
 
-  Widget _buildModuleCard(_ModuleInfo mod, bool isDark,
-      {bool isRecommended = false}) {
+  Widget _buildModuleCard(
+    _ModuleInfo mod,
+    bool isDark, {
+    bool isRecommended = false,
+  }) {
     final cardBg = isDark ? const Color(0xFF1B251B) : Colors.white;
-    final titleColor = isDark ? const Color(0xFFE5E7EB) : const Color(0xFF1E293B);
-    final subtitleColor = isDark ? const Color(0xFF9AA79B) : const Color(0xFF64748B);
+    final titleColor = isDark
+        ? const Color(0xFFE5E7EB)
+        : const Color(0xFF1E293B);
+    final subtitleColor = isDark
+        ? const Color(0xFF9AA79B)
+        : const Color(0xFF64748B);
     final tagBg = isDark ? mod.color.withAlpha(40) : mod.color.withAlpha(20);
     final tagText = isDark ? mod.color.withAlpha(200) : mod.color;
 
