@@ -3,7 +3,9 @@ import 'package:disaster_resilience_ai/models/profile_model.dart';
 import 'package:disaster_resilience_ai/localization/app_language.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
 import 'package:disaster_resilience_ai/theme/app_theme.dart';
+import 'package:disaster_resilience_ai/services/notification_service.dart';
 import 'package:disaster_resilience_ai/ui/edit_profile_page.dart';
+import 'package:disaster_resilience_ai/ui/family_tab.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({
@@ -564,14 +566,14 @@ class _ProfileTabState extends State<ProfileTab> {
             ),
             const SizedBox(height: 8),
             _buildSettingItem(
-              icon: Icons.translate,
               tr(en: 'Language', ms: 'Bahasa', zh: '语言'),
+              icon: Icons.translate,
               subtitle: languageController.label,
               onTap: _selectLanguage,
             ),
             _buildSettingItem(
-              icon: Icons.notifications,
               tr(en: 'Notifications', ms: 'Pemberitahuan', zh: '通知'),
+              icon: Icons.notifications,
               trailing: Switch(
                 value: _notificationsEnabled,
                 onChanged: (value) =>
@@ -581,8 +583,66 @@ class _ProfileTabState extends State<ProfileTab> {
               ),
             ),
             _buildSettingItem(
-              icon: Icons.dark_mode,
+              tr(en: 'Test Notification', ms: 'Uji Pemberitahuan', zh: '测试通知'),
+              icon: Icons.notifications_active_outlined,
+              subtitle: tr(
+                en: 'Send a test alert to verify notifications work',
+                ms: 'Hantar amaran ujian untuk sahkan pemberitahuan',
+                zh: '发送测试提醒以验证通知功能',
+              ),
+              onTap: () async {
+                try {
+                  await NotificationService.instance.showTestNotification();
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        tr(
+                          en: 'Test notification sent',
+                          ms: 'Pemberitahuan ujian dihantar',
+                          zh: '测试通知已发送',
+                        ),
+                      ),
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                } catch (_) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        tr(
+                          en: 'Notifications are not supported on this platform',
+                          ms: 'Pemberitahuan tidak disokong pada platform ini',
+                          zh: '此平台不支持通知',
+                        ),
+                      ),
+                      duration: const Duration(seconds: 3),
+                    ),
+                  );
+                }
+              },
+            ),
+            _buildSettingItem(
+              tr(en: 'Family', ms: 'Keluarga', zh: '家人'),
+              icon: Icons.group_outlined,
+              subtitle: tr(
+                en: 'Manage family & live location sharing',
+                ms: 'Urus keluarga & perkongsian lokasi langsung',
+                zh: '管理家庭与实时位置共享',
+              ),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => FamilyTab(accessToken: widget.accessToken),
+                  ),
+                );
+              },
+            ),
+            _buildSettingItem(
               tr(en: 'Dark Mode', ms: 'Mod Gelap', zh: '深色模式'),
+              icon: Icons.dark_mode,
               trailing: Switch(
                 value: themeController.isDarkMode,
                 onChanged: (value) {
