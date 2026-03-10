@@ -22,8 +22,60 @@ from app.schemas.warning import (
     WarningOut,
 )
 from app.services.notifications import broadcast_warning, get_warnings_for_location
+from app.services import met_malaysia
+from app.core.geo import haversine
 
 router = APIRouter()
+
+# ── Malaysia state / sea-area centroids for MetMalaysia text matching ─────────
+# Used to resolve a rough lat/lon when MetMalaysia stores no coordinates.
+_STATE_CENTROIDS: dict[str, tuple[float, float]] = {
+    "perlis":           (6.44,  100.19),
+    "kedah":            (6.12,  100.37),
+    "penang":           (5.42,  100.33),
+    "perak":            (4.59,  101.09),
+    "selangor":         (3.07,  101.52),
+    "kuala lumpur":     (3.14,  101.69),
+    "putrajaya":        (2.93,  101.69),
+    "negeri sembilan":  (2.72,  102.25),
+    "melaka":           (2.21,  102.25),
+    "johor":            (1.86,  103.43),
+    "pahang":           (3.81,  103.33),
+    "terengganu":       (5.31,  103.14),
+    "kelantan":         (5.88,  102.24),
+    "sabah":            (5.98,  116.07),
+    "sarawak":          (1.55,  110.36),
+    "labuan":           (5.28,  115.24),
+    # Coastal / sea areas
+    "south china sea":  (8.00,  112.00),
+    "strait of malacca":(3.00,  100.50),
+    "sulu sea":         (7.00,  120.00),
+    "andaman":          (12.00,  93.00),
+    "east coast":       (4.50,  103.40),
+    "west coast":       (3.50,  100.80),
+    "sabah waters":     (5.50,  117.00),
+    "sarawak waters":   (3.00,  111.00),
+}
+
+
+def _resolve_gov_coords(row: dict) -> tuple[float, float] | None:
+    """Return (lat, lon) for a government alert by:
+       1. Real DB coordinates (if any),
+       2. Scanning heading + text for a Malaysia state/sea-area keyword.
+       Returns None if no location can be determined.
+    """
+    if row.get("latitude") and row.get("longitude"):
+        return float(row["latitude"]), float(row["longitude"])
+    raw = row.get("raw_data") or {}
+    text = (
+        (raw.get("heading_en") or "") + " " +
+        (raw.get("text_en") or "") + " " +
+        (row.get("area") or "")
+    ).lower()
+    for keyword, coords in _STATE_CENTROIDS.items():
+        if keyword in text:
+            return coords
+    return None
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -40,6 +92,59 @@ def _record_to_out(rec: warning_db.WarningRecord) -> WarningOut:
         source=rec["source"],
         created_at=rec["created_at"],
         active=rec["active"],
+    )
+
+
+_SEVERITY_TO_ALERT = {"high": "warning", "medium": "observe", "low": "advisory", "info": "advisory"}
+
+
+def _gov_alert_to_out(row: dict) -> WarningOut:
+    """Convert a government_alerts row (MetMalaysia) into a WarningOut."""
+    from datetime import datetime, timezone
+    raw = row.get("raw_data") or {}
+    heading = raw.get("heading_en") or row.get("area") or "MetMalaysia Warning"
+    text    = raw.get("text_en") or ""
+    valid_to = raw.get("valid_to") or ""
+    description = text or heading
+    if valid_to:
+        description += f" (valid until {valid_to})"
+
+    # Map severity to alert_level
+    severity   = row.get("severity") or "info"
+    alert_str  = _SEVERITY_TO_ALERT.get(severity, "advisory")
+
+    # Guess hazard type from heading
+    h_lower = heading.lower()
+    if "flood" in h_lower or "rain" in h_lower:
+        hazard = HazardType.FLOOD
+    elif "wind" in h_lower or "sea" in h_lower or "wave" in h_lower:
+        hazard = HazardType.TYPHOON
+    elif "landslide" in h_lower:
+        hazard = HazardType.LANDSLIDE
+    else:
+        hazard = HazardType.FORECAST
+
+    # MetMalaysia warnings are nationwide — use Malaysia centroid if no coords
+    lat = row.get("latitude") or 4.2105
+    lon = row.get("longitude") or 108.9758
+
+    fetched_at = row.get("fetched_at") or datetime.now(timezone.utc).isoformat()
+    try:
+        created_at_dt = datetime.fromisoformat(fetched_at.replace("Z", "+00:00"))
+    except Exception:
+        created_at_dt = datetime.now(timezone.utc)
+
+    return WarningOut(
+        id=row["id"],
+        title=heading,
+        description=description,
+        hazard_type=hazard,
+        alert_level=AlertLevel(alert_str),
+        location=GeoPoint(latitude=lat, longitude=lon),
+        radius_km=500.0,  # nationwide/regional — large radius
+        source="MetMalaysia",
+        created_at=created_at_dt,
+        active=row.get("active", True),
     )
 
 
@@ -98,10 +203,16 @@ async def list_warnings(
         hazard_type=hazard_type.value if hazard_type else None,
         alert_level=alert_level.value if alert_level else None,
     )
-    return WarningList(
-        count=len(records),
-        warnings=[_record_to_out(r) for r in records],
-    )
+    warnings = [_record_to_out(r) for r in records]
+
+    # Merge MetMalaysia government alerts
+    try:
+        gov_rows = met_malaysia.get_active_warnings()
+        warnings += [_gov_alert_to_out(r) for r in gov_rows]
+    except Exception:
+        pass  # Never let MetMalaysia failure break the endpoint
+
+    return WarningList(count=len(warnings), warnings=warnings)
 
 
 # ── GET /warnings/{warning_id} — single warning ─────────────────────────────
@@ -152,6 +263,47 @@ async def nearby_warnings(
     """
     active = warning_db.get_all_active_warnings()
     matched = get_warnings_for_location(latitude, longitude, active)
+    all_warnings = [
+        _record_to_out(r).model_copy(update={
+            "distance_km": round(haversine(latitude, longitude, r["latitude"], r["longitude"]), 1)
+        })
+        for r in matched
+    ]
+
+    # Include MetMalaysia government alerts only within 50 km.
+    # Location is resolved by parsing the warning text for state/sea-area keywords.
+    # Warnings with no recognisable location are skipped (irrelevant to user).
+    _GOV_RADIUS_KM = 50.0
+    try:
+        gov_rows = met_malaysia.get_active_warnings()
+        for r in gov_rows:
+            coords = _resolve_gov_coords(r)
+            if coords is None:
+                continue  # No location resolved — skip this warning
+            gov_lat, gov_lon = coords
+            dist = haversine(latitude, longitude, gov_lat, gov_lon)
+            if dist <= _GOV_RADIUS_KM:
+                out = _gov_alert_to_out(r).model_copy(update={"distance_km": round(dist, 1)})
+                all_warnings.append(out)
+    except Exception:
+        pass
+
+    return WarningList(count=len(all_warnings), warnings=all_warnings)
+
+
+# ── GET /warnings/gov-alerts — raw MetMalaysia alerts ────────────────────────
+
+@router.get(
+    "/gov-alerts",
+    summary="Raw MetMalaysia government alerts (last 24 h)",
+)
+async def gov_alerts() -> dict:
+    """Return the latest MetMalaysia government weather warnings in their raw format."""
+    try:
+        rows = met_malaysia.get_active_warnings()
+        return {"count": len(rows), "alerts": rows}
+    except Exception as exc:
+        return {"count": 0, "alerts": [], "error": str(exc)}
     return WarningList(
         count=len(matched),
         warnings=[_record_to_out(r) for r in matched],

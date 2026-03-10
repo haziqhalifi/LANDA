@@ -76,6 +76,7 @@ class WarningOut(BaseModel):
     source: str
     created_at: datetime
     active: bool = True
+    distance_km: float | None = None
 
 
 class WarningList(BaseModel):
