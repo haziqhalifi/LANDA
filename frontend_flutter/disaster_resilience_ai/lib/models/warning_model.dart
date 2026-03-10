@@ -86,6 +86,7 @@ class Warning {
   final String source;
   final DateTime createdAt;
   final bool active;
+  final double? distanceKm;
 
   const Warning({
     required this.id,
@@ -98,6 +99,7 @@ class Warning {
     required this.source,
     required this.createdAt,
     required this.active,
+    this.distanceKm,
   });
 
   factory Warning.fromJson(Map<String, dynamic> json) {
@@ -118,6 +120,9 @@ class Warning {
       source: json['source'] as String,
       createdAt: DateTime.parse(json['created_at'] as String),
       active: json['active'] as bool? ?? true,
+      distanceKm: json['distance_km'] != null
+          ? (json['distance_km'] as num).toDouble()
+          : null,
     );
   }
 }

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resilience AI — Admin</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23166534'><path d='M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z'/></svg>" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+  <!-- Nav -->
+  <nav class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 bg-green-700 rounded-lg flex items-center justify-center">
+        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+        </svg>
+      </div>
+      <span class="font-bold text-gray-800">Resilience AI Admin</span>
+    </div>
+    <button id="logout-btn" class="text-sm text-gray-500 hover:text-red-600 transition-colors">Sign Out</button>
+  </nav>
+
+  <div class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Stats Row -->
+    <div id="stats-row" class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      <div class="bg-white rounded-xl p-4 shadow-sm border border-gray-100 text-center">
+        <p class="text-2xl font-bold text-gray-800" id="stat-total">—</p>
+        <p class="text-xs text-gray-500 mt-1">Total</p>
+      </div>
+      <div class="bg-yellow-50 rounded-xl p-4 shadow-sm border border-yellow-100 text-center">
+        <p class="text-2xl font-bold text-yellow-700" id="stat-pending">—</p>
+        <p class="text-xs text-yellow-600 mt-1">Pending</p>
+      </div>
+      <div class="bg-green-50 rounded-xl p-4 shadow-sm border border-green-100 text-center">
+        <p class="text-2xl font-bold text-green-700" id="stat-validated">—</p>
+        <p class="text-xs text-green-600 mt-1">Validated</p>
+      </div>
+      <div class="bg-red-50 rounded-xl p-4 shadow-sm border border-red-100 text-center">
+        <p class="text-2xl font-bold text-red-700" id="stat-rejected">—</p>
+        <p class="text-xs text-red-600 mt-1">Rejected</p>
+      </div>
+      <div class="bg-gray-50 rounded-xl p-4 shadow-sm border border-gray-200 text-center">
+        <p class="text-2xl font-bold text-gray-600" id="stat-resolved">—</p>
+        <p class="text-xs text-gray-500 mt-1">Resolved</p>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
+      <div class="flex flex-wrap gap-3 items-center">
+        <input type="text" id="search-input" placeholder="Search reports..."
+          class="flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+        <select id="status-filter" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="validated">Validated</option>
+          <option value="rejected">Rejected</option>
+          <option value="resolved">Resolved</option>
+          <option value="expired">Expired</option>
+        </select>
+        <select id="type-filter" class="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+          <option value="">All Types</option>
+          <option value="flood">Flood</option>
+          <option value="landslide">Landslide</option>
+          <option value="blocked_road">Blocked Road</option>
+          <option value="medical_emergency">Medical Emergency</option>
+        </select>
+        <button id="refresh-btn" class="px-4 py-2 bg-green-700 text-white text-sm rounded-lg hover:bg-green-800 transition-colors">
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Rescue Requests Panel -->
+    <div class="bg-white rounded-xl shadow-sm border border-red-200 mb-6 overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-red-100 bg-red-50">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+          </svg>
+          <span class="font-semibold text-red-800 text-sm">Rescue Requests — DANGER Replies</span>
+          <span id="rescue-badge" class="hidden ml-1 bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full"></span>
+        </div>
+        <button onclick="loadRescueRequests()" class="text-xs text-red-600 hover:text-red-800 font-medium">Refresh</button>
+      </div>
+      <div id="rescue-list" class="p-4 space-y-2">
+        <p class="text-gray-400 text-sm text-center py-4">Loading...</p>
+      </div>
+    </div>
+
+    <!-- Reports Table -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th class="text-left px-4 py-3 text-gray-600 font-semibold">Type</th>
+              <th class="text-left px-4 py-3 text-gray-600 font-semibold">Location</th>
+              <th class="text-left px-4 py-3 text-gray-600 font-semibold">Description</th>
+              <th class="text-left px-4 py-3 text-gray-600 font-semibold">Status</th>
+              <th class="text-left px-4 py-3 text-gray-600 font-semibold">Vouches</th>
+              <th class="text-left px-4 py-3 text-gray-600 font-semibold">Submitted</th>
+              <th class="text-left px-4 py-3 text-gray-600 font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="reports-tbody">
+            <tr><td colspan="7" class="text-center py-10 text-gray-400">Loading reports...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="pagination" class="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+        <span id="page-info" class="text-sm text-gray-500"></span>
+        <div class="flex gap-2">
+          <button id="prev-btn" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40" disabled>Previous</button>
+          <button id="next-btn" class="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-40" disabled>Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="hidden fixed top-4 right-4 z-50 px-5 py-3 rounded-xl shadow-lg text-sm font-semibold"></div>
+
+  <!-- Confirm Modal -->
+  <div id="confirm-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+      <p id="confirm-message" class="text-gray-800 font-medium mb-5 text-sm leading-relaxed"></p>
+      <div class="flex gap-3">
+        <button id="confirm-ok-btn" class="flex-1 bg-green-700 hover:bg-green-800 text-white font-semibold py-2 rounded-lg text-sm transition-colors">Confirm</button>
+        <button id="confirm-cancel-btn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 rounded-lg text-sm transition-colors">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SMS Alert Modal -->
+  <div id="sms-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center shrink-0">
+          <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+          </svg>
+        </div>
+        <div>
+          <h3 class="font-bold text-gray-800">Send SMS Alert to Nearby People?</h3>
+          <p class="text-xs text-gray-500 mt-0.5">People within 10 km of this incident will receive a flood warning via SMS and be asked to reply SAFE or DANGER.</p>
+        </div>
+      </div>
+      <input type="hidden" id="sms-report-id" />
+      <div class="flex gap-3 mt-2">
+        <button id="sms-send-btn" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 rounded-lg text-sm transition-colors">Send SMS Alert</button>
+        <button id="sms-cancel-btn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 rounded-lg text-sm transition-colors">Skip</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reject Modal -->
+  <div id="reject-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl p-6 w-full max-w-md">
+      <h3 class="font-bold text-gray-800 text-lg mb-4">Reject Report</h3>
+      <input type="hidden" id="reject-report-id" />
+      <label class="block text-sm font-medium text-gray-700 mb-1">Reason for rejection</label>
+      <textarea id="reject-reason" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500" placeholder="e.g. Duplicate report, insufficient evidence..."></textarea>
+      <div class="flex gap-3 mt-4">
+        <button id="reject-confirm-btn" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2 rounded-lg text-sm transition-colors">Reject</button>
+        <button id="reject-cancel-btn" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 rounded-lg text-sm transition-colors">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js?v=5"></script>
+  <script src="js/auth.js?v=5"></script>
+  <script src="js/reports.js?v=5"></script>
+  <script>
+    requireAuth();
+    document.getElementById('logout-btn').addEventListener('click', logout);
+    loadRescueRequests();
+    // Auto-refresh rescue panel every 30 seconds
+    setInterval(loadRescueRequests, 30000);
+  </script>
+</body>
+</html>

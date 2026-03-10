@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'package:disaster_resilience_ai/models/warning_model.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
 import 'package:disaster_resilience_ai/ui/auth_page.dart';
 import 'package:disaster_resilience_ai/ui/emergency_alert_page.dart';
 import 'package:disaster_resilience_ai/ui/submit_report_page.dart';
-import 'package:disaster_resilience_ai/ui/school_preparedness_page.dart';
+import 'package:disaster_resilience_ai/ui/personal_preparedness_page.dart';
 import 'package:disaster_resilience_ai/ui/safe_routes_page.dart';
 import 'package:disaster_resilience_ai/ui/emergency_contacts_page.dart';
+import 'package:disaster_resilience_ai/ui/family_checkin_page.dart';
 import 'package:disaster_resilience_ai/ui/reports_tab.dart';
 import 'package:disaster_resilience_ai/ui/map_tab.dart';
 import 'package:disaster_resilience_ai/ui/profile_tab.dart';
@@ -40,13 +42,39 @@ class _HomePageState extends State<HomePage> {
   List<Warning> _allActiveWarnings = [];
   String? _warningError;
 
-  // Default location: Kuantan, Pahang, Malaysia (the concept doc location)
-  final double _userLat = 3.8077;
-  final double _userLon = 103.3260;
+  // Location — updated from GPS; fallback to Kuantan, Pahang, Malaysia
+  double _userLat = 3.8077;
+  double _userLon = 103.3260;
 
   @override
   void initState() {
     super.initState();
+    _initLocation();
+  }
+
+  Future<void> _initLocation() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (serviceEnabled) {
+        LocationPermission perm = await Geolocator.checkPermission();
+        if (perm == LocationPermission.denied) {
+          perm = await Geolocator.requestPermission();
+        }
+        if (perm != LocationPermission.deniedForever && perm != LocationPermission.denied) {
+          final pos = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+          );
+          if (mounted) {
+            setState(() {
+              _userLat = pos.latitude;
+              _userLon = pos.longitude;
+            });
+          }
+        }
+      }
+    } catch (_) {
+      // Keep fallback coords
+    }
     _fetchWarnings();
     _updateBackendLocation();
   }
@@ -223,17 +251,33 @@ class _HomePageState extends State<HomePage> {
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const SubmitReportPage()),
+                        MaterialPageRoute(
+                          builder: (context) => SubmitReportPage(accessToken: widget.accessToken),
+                        ),
                       );
                     },
                   ),
                   _buildActionCard(
-                    icon: Icons.school_outlined,
-                    title: 'School\nRegistry',
+                    icon: Icons.checklist_outlined,
+                    title: 'Personal\nPreparedness',
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const SchoolPreparednessPage()),
+                        MaterialPageRoute(
+                          builder: (context) => PersonalPreparednessPage(accessToken: widget.accessToken),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildActionCard(
+                    icon: Icons.family_restroom,
+                    title: 'Family\nCheck-in',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => FamilyCheckinPage(accessToken: widget.accessToken),
+                        ),
                       );
                     },
                   ),
@@ -511,6 +555,9 @@ class _HomePageState extends State<HomePage> {
     }
 
     final timeAgo = _timeAgo(warning.createdAt);
+    final distText = warning.distanceKm != null
+        ? ' • ${warning.distanceKm!.toStringAsFixed(1)} km away'
+        : '';
 
     return GestureDetector(
       onTap: () {
@@ -554,7 +601,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${warning.hazardType.displayName} • ${warning.alertLevel.displayName} • $timeAgo',
+                    '${warning.hazardType.displayName} • ${warning.alertLevel.displayName} • $timeAgo$distText',
                     style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                 ],
@@ -643,7 +690,7 @@ class _HomePageState extends State<HomePage> {
       case 0:
         return _buildDashboard();
       case 1:
-        return const ReportsTab();
+        return ReportsTab(accessToken: widget.accessToken);
       case 2:
         return const MapTab();
       case 3:
