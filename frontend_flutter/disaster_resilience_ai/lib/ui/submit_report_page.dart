@@ -24,112 +24,51 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
 
   String? _selectedType;
   bool _vulnerableHelp = false;
-  bool _loading = false;
-  bool _locating = false;
-  double? _lat;
-  double? _lon;
-  String _locationName = 'Fetching location...';
-  String? _error;
 
-  @override
-  void initState() {
-    super.initState();
-    _fetchLocation();
-  }
-
-  @override
-  void dispose() {
-    _descController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _fetchLocation() async {
-    setState(() => _locating = true);
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        _setFallbackLocation();
-        return;
-      }
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.deniedForever ||
-          permission == LocationPermission.denied) {
-        _setFallbackLocation();
-        return;
-      }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
-      );
-      if (mounted) {
-        setState(() {
-          _lat = pos.latitude;
-          _lon = pos.longitude;
-          _locationName = '${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)}';
-          _locating = false;
-        });
-      }
-    } catch (_) {
-      _setFallbackLocation();
-    }
-  }
-
-  void _setFallbackLocation() {
-    if (mounted) {
-      setState(() {
-        _lat = 3.8077;
-        _lon = 103.3260;
-        _locationName = 'Kuantan, Pahang (fallback)';
-        _locating = false;
-      });
-    }
-  }
-
-  Future<void> _submit() async {
-    if (_selectedType == null) {
-      setState(() => _error = 'Please select an incident type.');
-      return;
-    }
-    if (_descController.text.trim().isEmpty) {
-      setState(() => _error = 'Please describe what you are reporting.');
-      return;
-    }
-    if (_lat == null || _lon == null) {
-      setState(() => _error = 'Location not ready yet — please wait.');
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      await _api.submitReport(
-        accessToken: widget.accessToken,
-        reportType: _selectedType!,
-        description: _descController.text.trim(),
-        locationName: _locationName,
-        latitude: _lat!,
-        longitude: _lon!,
-        vulnerablePerson: _vulnerableHelp,
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Report submitted — thank you for keeping the community safe!'),
-          backgroundColor: Color(0xFF2E7D32),
+  Widget _buildReportCard({
+    required IconData icon,
+    required Color iconColor,
+    required Color bgColor,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-      );
-      Navigator.pop(context);
-    } catch (e) {
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+              child: Icon(icon, color: iconColor, size: 32),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF1E293B),
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -168,7 +107,7 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Select the incident type to notify the community.',
+              'Select the incident type to notify the\ncommunity.',
               style: TextStyle(color: Colors.grey, fontSize: 14, height: 1.5),
             ),
             const SizedBox(height: 24),
@@ -235,7 +174,10 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                       color: Colors.red[600],
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.share_location, color: Colors.white),
+                    child: const Icon(
+                      Icons.share_location,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(width: 16),
                   const Expanded(
@@ -261,7 +203,7 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                   Switch(
                     value: _vulnerableHelp,
                     onChanged: (val) => setState(() => _vulnerableHelp = val),
-                    activeColor: Colors.white,
+                    activeThumbColor: Colors.white,
                     activeTrackColor: Colors.red[400],
                     inactiveThumbColor: Colors.white,
                     inactiveTrackColor: Colors.grey[300],
@@ -286,54 +228,46 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey[200]!),
               ),
-              child: Row(
-                children: [
-                  _locating
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2E7D32)),
-                        )
-                      : Icon(Icons.location_on_outlined, color: Colors.green[700], size: 20),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      _locationName,
-                      style: const TextStyle(
-                        color: Color(0xFF1E293B),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
                   ),
-                  if (!_locating)
-                    GestureDetector(
-                      onTap: _fetchLocation,
-                      child: Icon(Icons.refresh, color: Colors.grey[400], size: 18),
-                    ),
-                ],
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 5,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.location_on_outlined,
+                        color: Colors.green[700],
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Kampung Melayu, Jakarta',
+                        style: TextStyle(
+                          color: Color(0xFF1E293B),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-
-            // Error message
-            if (_error != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.red[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red[200]!),
-                ),
-                child: Text(
-                  _error!,
-                  style: TextStyle(color: Colors.red[700], fontSize: 13),
-                ),
-              ),
-            ],
-
             const SizedBox(height: 32),
             SizedBox(
               width: double.infinity,
@@ -347,17 +281,11 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                icon: _loading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Icon(Icons.send_outlined),
-                label: Text(
-                  _loading ? 'Submitting...' : 'Send Incident Report',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                icon: const Text(
+                  'Send Incident Report',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
+                label: const Icon(Icons.send_outlined),
               ),
             ),
             const SizedBox(height: 16),

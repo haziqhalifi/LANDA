@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'package:disaster_resilience_ai/models/warning_model.dart';
+import 'package:disaster_resilience_ai/models/weather_model.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
+import 'package:disaster_resilience_ai/services/weather_service.dart';
 import 'package:disaster_resilience_ai/ui/auth_page.dart';
 import 'package:disaster_resilience_ai/ui/emergency_alert_page.dart';
 import 'package:disaster_resilience_ai/ui/submit_report_page.dart';
@@ -13,6 +17,14 @@ import 'package:disaster_resilience_ai/ui/family_checkin_page.dart';
 import 'package:disaster_resilience_ai/ui/reports_tab.dart';
 import 'package:disaster_resilience_ai/ui/map_tab.dart';
 import 'package:disaster_resilience_ai/ui/profile_tab.dart';
+import 'package:disaster_resilience_ai/ui/weather_page.dart';
+import 'package:disaster_resilience_ai/ui/chatbot_page.dart';
+import 'package:disaster_resilience_ai/models/disaster_news_model.dart';
+import 'package:disaster_resilience_ai/ui/all_warnings_page.dart';
+import 'package:disaster_resilience_ai/ui/all_news_page.dart';
+import 'package:disaster_resilience_ai/services/notification_service.dart';
+import 'package:disaster_resilience_ai/ui/incoming_alert_page.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
@@ -35,6 +47,7 @@ class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
 
   final ApiService _api = ApiService();
+  final WeatherService _weatherService = WeatherService();
 
   // ── Warning state ────────────────────────────────────────────────────────
   bool _loadingWarnings = true;
@@ -42,41 +55,145 @@ class _HomePageState extends State<HomePage> {
   List<Warning> _allActiveWarnings = [];
   String? _warningError;
 
-  // Location — updated from GPS; fallback to Kuantan, Pahang, Malaysia
+  // ── Weather state ─────────────────────────────────────────────────────────
+  WeatherData? _weather;
+
+  // Location — updated from GPS; falls back to Kuantan if unavailable
   double _userLat = 3.8077;
   double _userLon = 103.3260;
+  String _locationLabel = 'Locating...';
+  Timer? _liveLocationTimer;
 
   @override
   void initState() {
     super.initState();
-    _initLocation();
+    _determineLocation();
   }
 
-  Future<void> _initLocation() async {
+  @override
+  void dispose() {
+    _liveLocationTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Fetch the device's real GPS location, then kick off data fetches.
+  Future<void> _determineLocation() async {
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (serviceEnabled) {
-        LocationPermission perm = await Geolocator.checkPermission();
-        if (perm == LocationPermission.denied) {
-          perm = await Geolocator.requestPermission();
+        var permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
         }
-        if (perm != LocationPermission.deniedForever && perm != LocationPermission.denied) {
-          final pos = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
-          );
+        if (permission == LocationPermission.always ||
+            permission == LocationPermission.whileInUse) {
+          final position = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.medium,
+            ),
+          ).timeout(const Duration(seconds: 10));
           if (mounted) {
             setState(() {
-              _userLat = pos.latitude;
-              _userLon = pos.longitude;
+              _userLat = position.latitude;
+              _userLon = position.longitude;
+              _locationLabel =
+                  '${position.latitude.toStringAsFixed(4)}°N, ${position.longitude.toStringAsFixed(4)}°E';
             });
           }
+        } else {
+          if (mounted) setState(() => _locationLabel = 'Kuantan, Pahang');
         }
+      } else {
+        if (mounted) setState(() => _locationLabel = 'Kuantan, Pahang');
       }
     } catch (_) {
-      // Keep fallback coords
+      // GPS unavailable — keep fallback coordinates
+      if (mounted) setState(() => _locationLabel = 'Kuantan, Pahang');
     }
     _fetchWarnings();
     _updateBackendLocation();
+    _fetchWeather();
+    _startNotificationPolling();
+    _startLiveLocationSync();
+  }
+
+  /// Keep uploading user's location while app is open so family members
+  /// can view near real-time movement.
+  void _startLiveLocationSync() {
+    _liveLocationTimer?.cancel();
+    _liveLocationTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      try {
+        final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (!serviceEnabled) return;
+
+        final permission = await Geolocator.checkPermission();
+        if (permission != LocationPermission.always &&
+            permission != LocationPermission.whileInUse) {
+          return;
+        }
+
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+          ),
+        ).timeout(const Duration(seconds: 8));
+
+        if (!mounted) return;
+        setState(() {
+          _userLat = position.latitude;
+          _userLon = position.longitude;
+          _locationLabel =
+              '${position.latitude.toStringAsFixed(4)}°N, ${position.longitude.toStringAsFixed(4)}°E';
+        });
+
+        await _updateBackendLocation();
+      } catch (_) {
+        // Non-critical in background loop.
+      }
+    });
+  }
+
+  /// Begin polling for new warnings and showing local notifications.
+  void _startNotificationPolling() {
+    final notif = NotificationService.instance;
+    notif.onWarningTap = (warning) {
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => EmergencyAlertPage(warning: warning),
+          ),
+        );
+      }
+    };
+    notif.onEmergencyAlert = (warning) {
+      // Push the full-screen incoming alert page (like a phone call)
+      final nav = notif.navigatorKey?.currentState;
+      if (nav != null) {
+        nav.push(
+          MaterialPageRoute(
+            builder: (_) => IncomingAlertPage(warning: warning),
+          ),
+        );
+      }
+    };
+    notif.startPolling(
+      accessToken: widget.accessToken,
+      latitude: _userLat,
+      longitude: _userLon,
+    );
+  }
+
+  Future<void> _fetchWeather() async {
+    try {
+      final data = await _weatherService.fetchWeather(
+        latitude: _userLat,
+        longitude: _userLon,
+      );
+      if (mounted) setState(() => _weather = data);
+    } catch (_) {
+      // Non-critical — widget shows placeholder if unavailable
+    }
   }
 
   /// Send user's location to backend so the warning system can target them.
@@ -84,6 +201,10 @@ class _HomePageState extends State<HomePage> {
     try {
       await _api.updateLocation(
         accessToken: widget.accessToken,
+        latitude: _userLat,
+        longitude: _userLon,
+      );
+      NotificationService.instance.updateLocation(
         latitude: _userLat,
         longitude: _userLon,
       );
@@ -131,7 +252,8 @@ class _HomePageState extends State<HomePage> {
     if (_nearbyWarnings.isEmpty) return AlertLevel.advisory;
     return _nearbyWarnings.fold<AlertLevel>(
       AlertLevel.advisory,
-      (prev, w) => w.alertLevel.severityIndex > prev.severityIndex ? w.alertLevel : prev,
+      (prev, w) =>
+          w.alertLevel.severityIndex > prev.severityIndex ? w.alertLevel : prev,
     );
   }
 
@@ -161,7 +283,8 @@ class _HomePageState extends State<HomePage> {
         return _StatusDisplay(
           icon: Icons.visibility_outlined,
           label: 'Risk Status: OBSERVE',
-          subtitle: '${_nearbyWarnings.length} warning(s) — monitor conditions closely',
+          subtitle:
+              '${_nearbyWarnings.length} warning(s) — monitor conditions closely',
           gradientColors: [Colors.amber[600]!, Colors.orange[700]!],
           buttonLabel: 'VIEW WARNINGS',
         );
@@ -185,6 +308,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _logout() async {
+    NotificationService.instance.stopPolling();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth_access_token');
     await prefs.remove('auth_email');
@@ -203,109 +327,313 @@ class _HomePageState extends State<HomePage> {
       color: const Color(0xFF2E7D32),
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 16),
-              // Status Card — live from backend
-              _buildStatusCard(),
-              const SizedBox(height: 16),
-              // Active Warning Tiles (if any)
-              if (_nearbyWarnings.isNotEmpty) ...[
-                const Text(
-                  'Active Warnings Near You',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E293B),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                ..._nearbyWarnings.map(_buildWarningTile),
-                const SizedBox(height: 16),
-              ],
-              // Quick Actions Title
-              const Text(
-                'Quick Actions',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 16),
-              // Quick Actions Grid
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 16,
-                crossAxisSpacing: 16,
-                childAspectRatio: 1.1,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildGreetingBanner(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildActionCard(
-                    icon: Icons.campaign_outlined,
-                    title: 'Community\nReport',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => SubmitReportPage(accessToken: widget.accessToken),
+                  const SizedBox(height: 16),
+                  _buildStatusCard(),
+                  const SizedBox(height: 24),
+                  // ── Active Warnings section (max 3) ──────────────────
+                  _buildSectionHeader(
+                    'Active Warnings',
+                    _allActiveWarnings.isEmpty
+                        ? null
+                        : 'View All (${_allActiveWarnings.length})',
+                    _allActiveWarnings.isEmpty
+                        ? null
+                        : () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  AllWarningsPage(warnings: _allActiveWarnings),
+                            ),
+                          ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildWarningsSection(),
+                  const SizedBox(height: 24),
+                  // ── Disaster News & Info section (max 3) ─────────────
+                  _buildSectionHeader(
+                    'Disaster News & Info',
+                    'View All',
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AllNewsPage()),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildNewsSection(),
+                  const SizedBox(height: 24),
+                  // ── Quick Actions ─────────────────────────────────────
+                  _buildSectionHeader('Quick Actions', null, null),
+                  const SizedBox(height: 12),
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 1.15,
+                    children: [
+                      _buildActionCard(
+                        icon: Icons.campaign_outlined,
+                        title: 'Community\nReport',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SubmitReportPage(),
+                          ),
                         ),
-                      );
-                    },
-                  ),
-                  _buildActionCard(
-                    icon: Icons.checklist_outlined,
-                    title: 'Personal\nPreparedness',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => PersonalPreparednessPage(accessToken: widget.accessToken),
+                      ),
+                      _buildActionCard(
+                        icon: Icons.school_outlined,
+                        title: 'School\nRegistry',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SchoolPreparednessPage(),
+                          ),
                         ),
-                      );
-                    },
-                  ),
-                  _buildActionCard(
-                    icon: Icons.family_restroom,
-                    title: 'Family\nCheck-in',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => FamilyCheckinPage(accessToken: widget.accessToken),
+                      ),
+                      _buildActionCard(
+                        icon: Icons.directions_run,
+                        title: 'Safe Routes',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const SafeRoutesPage(),
+                          ),
                         ),
-                      );
-                    },
+                      ),
+                      _buildActionCard(
+                        icon: Icons.phone_outlined,
+                        title: 'Emergency\nContacts',
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const EmergencyContactsPage(),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  _buildActionCard(
-                    icon: Icons.directions_run,
-                    title: 'Safe Routes',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const SafeRoutesPage()),
-                      );
-                    },
+                  const SizedBox(height: 32),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGreetingBanner() {
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12
+        ? 'Good Morning'
+        : hour < 17
+        ? 'Good Afternoon'
+        : 'Good Evening';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
+      decoration: const BoxDecoration(color: Color(0xFFF1F8E9)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$greeting, ${widget.username} 👋',
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1B5E20),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Stay informed. Stay safe.',
+            style: TextStyle(fontSize: 13, color: Color(0xFF4CAF50)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(
+    String title,
+    String? actionLabel,
+    VoidCallback? onAction,
+  ) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF1E293B),
+          ),
+        ),
+        if (actionLabel != null && onAction != null)
+          GestureDetector(
+            onTap: onAction,
+            child: Text(
+              actionLabel,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Color(0xFF2E7D32),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildWarningsSection() {
+    if (_loadingWarnings) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: CircularProgressIndicator(
+            color: Color(0xFF2E7D32),
+            strokeWidth: 2,
+          ),
+        ),
+      );
+    }
+    if (_warningError != null) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.orange[50],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.orange[200]!),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.wifi_off, color: Colors.orange[700], size: 22),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Could not fetch warnings. Pull down to retry.',
+                style: TextStyle(color: Colors.orange[800], fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_nearbyWarnings.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F8E9),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFC8E6C9)),
+        ),
+        child: const Row(
+          children: [
+            Icon(
+              Icons.check_circle_outline,
+              color: Color(0xFF4CAF50),
+              size: 28,
+            ),
+            SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'No active warnings',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2E7D32),
                   ),
-                  _buildActionCard(
-                    icon: Icons.phone_outlined,
-                    title: 'Emergency\nContacts',
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const EmergencyContactsPage()),
-                      );
-                    },
+                ),
+                Text(
+                  'Your area is currently safe',
+                  style: TextStyle(color: Color(0xFF4CAF50), fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+    final shown = _nearbyWarnings.take(3).toList();
+    return Column(children: shown.map(_buildWarningTile).toList());
+  }
+
+  Widget _buildNewsSection() {
+    final news = DisasterNewsData.articles.take(3).toList();
+    return Column(children: news.map(_buildNewsTile).toList());
+  }
+
+  Widget _buildNewsTile(DisasterNews article) {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => NewsDetailPage(article: article)),
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE0E0E0)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(10),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: article.accentColor.withAlpha(28),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(article.icon, color: article.accentColor, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    article.title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Color(0xFF1E293B),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${article.category} · ${article.readMinutes} min read',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 11),
                   ),
                 ],
               ),
-              const SizedBox(height: 32),
-            ],
-          ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.chevron_right, color: Colors.grey[400]),
+          ],
         ),
       ),
     );
@@ -364,11 +692,7 @@ class _HomePageState extends State<HomePage> {
                 color: Colors.white.withAlpha(51),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.wifi_off,
-                color: Colors.white,
-                size: 40,
-              ),
+              child: const Icon(Icons.wifi_off, color: Colors.white, size: 40),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -441,11 +765,7 @@ class _HomePageState extends State<HomePage> {
               color: Colors.white.withAlpha(51),
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              status.icon,
-              color: Colors.white,
-              size: 40,
-            ),
+            child: Icon(status.icon, color: Colors.white, size: 40),
           ),
           const SizedBox(height: 16),
           const Text(
@@ -470,10 +790,7 @@ class _HomePageState extends State<HomePage> {
           Text(
             status.subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-            ),
+            style: const TextStyle(color: Colors.white, fontSize: 14),
           ),
           const SizedBox(height: 24),
           SizedBox(
@@ -483,19 +800,25 @@ class _HomePageState extends State<HomePage> {
                 if (_nearbyWarnings.isNotEmpty) {
                   // Navigate to emergency alert page with the most severe warning
                   final mostSevere = _nearbyWarnings.reduce(
-                    (a, b) => a.alertLevel.severityIndex > b.alertLevel.severityIndex ? a : b,
+                    (a, b) =>
+                        a.alertLevel.severityIndex > b.alertLevel.severityIndex
+                        ? a
+                        : b,
                   );
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => EmergencyAlertPage(warning: mostSevere),
+                      builder: (context) =>
+                          EmergencyAlertPage(warning: mostSevere),
                     ),
                   );
                 } else {
                   // Show all active warnings page
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (context) => const EmergencyAlertPage()),
+                    MaterialPageRoute(
+                      builder: (context) => const EmergencyAlertPage(),
+                    ),
                   );
                 }
               },
@@ -645,11 +968,7 @@ class _HomePageState extends State<HomePage> {
                 color: Color(0xFFC8E6C9),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                icon,
-                color: const Color(0xFF2E7D32),
-                size: 32,
-              ),
+              child: Icon(icon, color: const Color(0xFF2E7D32), size: 32),
             ),
             const SizedBox(height: 12),
             Text(
@@ -667,7 +986,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  BottomNavigationBarItem _buildNavItem(IconData icon, IconData activeIcon, String label, int index) {
+  BottomNavigationBarItem _buildNavItem(
+    IconData icon,
+    IconData activeIcon,
+    String label,
+    int index,
+  ) {
     final isSelected = _selectedIndex == index;
     return BottomNavigationBarItem(
       icon: Container(
@@ -693,13 +1017,6 @@ class _HomePageState extends State<HomePage> {
         return ReportsTab(accessToken: widget.accessToken);
       case 2:
         return const MapTab();
-      case 3:
-        return ProfileTab(
-          accessToken: widget.accessToken,
-          username: widget.username,
-          email: widget.email,
-          onLogout: _logout,
-        );
       default:
         return _buildDashboard();
     }
@@ -725,14 +1042,72 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         actions: [
+          // ── Weather mini-widget ─────────────────────────────────────────
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => WeatherPage(
+                    latitude: _userLat,
+                    longitude: _userLon,
+                    locationName: _locationLabel,
+                  ),
+                ),
+              );
+            },
+            child: Container(
+              height: 40,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _weather?.icon ?? Icons.cloud_outlined,
+                    color: const Color(0xFF2E7D32),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _weather != null
+                        ? '${_weather!.temperature.round()}°C'
+                        : '--°C',
+                    style: const TextStyle(
+                      color: Color(0xFF2E7D32),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: CircleAvatar(
               backgroundColor: const Color(0xFFE8F5E9),
               child: IconButton(
-                icon: const Icon(Icons.person_outline, color: Color(0xFF2E7D32)),
+                icon: const Icon(
+                  Icons.person_outline,
+                  color: Color(0xFF2E7D32),
+                ),
                 onPressed: () {
-                  setState(() => _selectedIndex = 3);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ProfileTab(
+                        accessToken: widget.accessToken,
+                        username: widget.username,
+                        email: widget.email,
+                        onLogout: _logout,
+                      ),
+                    ),
+                  );
                 },
               ),
             ),
@@ -740,6 +1115,17 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       body: _buildBody(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const ChatbotPage()),
+          );
+        },
+        backgroundColor: const Color(0xFF2E7D32),
+        tooltip: 'Disaster Assistant',
+        child: const Icon(Icons.smart_toy_rounded, color: Colors.white),
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
@@ -758,13 +1144,23 @@ class _HomePageState extends State<HomePage> {
           selectedItemColor: const Color(0xFF2E7D32),
           unselectedItemColor: Colors.grey,
           showUnselectedLabels: true,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 12),
+          selectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.normal,
+            fontSize: 12,
+          ),
           items: [
             _buildNavItem(Icons.home_outlined, Icons.home, 'Home', 0),
-            _buildNavItem(Icons.insert_chart_outlined, Icons.insert_chart, 'Reports', 1),
+            _buildNavItem(
+              Icons.insert_chart_outlined,
+              Icons.insert_chart,
+              'Reports',
+              1,
+            ),
             _buildNavItem(Icons.map_outlined, Icons.map, 'Map', 2),
-            _buildNavItem(Icons.person_outline, Icons.person, 'Profile', 3),
           ],
         ),
       ),

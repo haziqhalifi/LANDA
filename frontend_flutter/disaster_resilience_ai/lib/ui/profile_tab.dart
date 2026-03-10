@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:disaster_resilience_ai/models/profile_model.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
+import 'package:disaster_resilience_ai/services/notification_service.dart';
 import 'package:disaster_resilience_ai/ui/edit_profile_page.dart';
+import 'package:disaster_resilience_ai/ui/family_tab.dart';
 
 class ProfileTab extends StatefulWidget {
   const ProfileTab({
@@ -76,7 +78,9 @@ class _ProfileTabState extends State<ProfileTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)));
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFF2E7D32)),
+      );
     }
 
     if (_error != null) {
@@ -88,7 +92,10 @@ class _ProfileTabState extends State<ProfileTab> {
             const SizedBox(height: 16),
             Text('Error loading profile: $_error'),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: _fetchProfile, child: const Text('Retry')),
+            ElevatedButton(
+              onPressed: _fetchProfile,
+              child: const Text('Retry'),
+            ),
           ],
         ),
       );
@@ -114,7 +121,9 @@ class _ProfileTabState extends State<ProfileTab> {
                 radius: 48,
                 backgroundColor: const Color(0xFFE8F5E9),
                 child: Text(
-                  widget.username.isNotEmpty ? widget.username[0].toUpperCase() : 'U',
+                  widget.username.isNotEmpty
+                      ? widget.username[0].toUpperCase()
+                      : 'U',
                   style: const TextStyle(
                     color: Color(0xFF2E7D32),
                     fontSize: 36,
@@ -125,7 +134,9 @@ class _ProfileTabState extends State<ProfileTab> {
             ),
             const SizedBox(height: 16),
             Text(
-              profile.fullName?.isNotEmpty == true ? profile.fullName! : widget.username,
+              profile.fullName?.isNotEmpty == true
+                  ? profile.fullName!
+                  : widget.username,
               style: const TextStyle(
                 color: Color(0xFF1E293B),
                 fontSize: 22,
@@ -197,7 +208,9 @@ class _ProfileTabState extends State<ProfileTab> {
                   onPressed: _editProfile,
                   icon: const Icon(Icons.edit, size: 18),
                   label: const Text('Edit'),
-                  style: TextButton.styleFrom(foregroundColor: const Color(0xFF2E7D32)),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF2E7D32),
+                  ),
                 ),
               ],
             ),
@@ -254,6 +267,38 @@ class _ProfileTabState extends State<ProfileTab> {
               onTap: () {},
             ),
             _buildSettingItem(
+              Icons.notifications_active_outlined,
+              'Test Notification',
+              'Send a test alert to verify notifications work',
+              false,
+              onTap: () async {
+                try {
+                  await NotificationService.instance.showTestNotification();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Test notification sent — check your notification tray',
+                        ),
+                        duration: Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Notifications are not supported on this platform',
+                        ),
+                        duration: Duration(seconds: 3),
+                      ),
+                    );
+                  }
+                }
+              },
+            ),
+            _buildSettingItem(
               Icons.language,
               'Language',
               'English',
@@ -266,6 +311,20 @@ class _ProfileTabState extends State<ProfileTab> {
               'Dengkil, Selangor',
               false,
               onTap: () {},
+            ),
+            _buildSettingItem(
+              Icons.group_outlined,
+              'Family',
+              'Manage family & live location sharing',
+              false,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => FamilyTab(accessToken: widget.accessToken),
+                  ),
+                );
+              },
             ),
 
             const SizedBox(height: 32),
@@ -318,10 +377,7 @@ class _ProfileTabState extends State<ProfileTab> {
           Text(
             label,
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontSize: 11,
-            ),
+            style: TextStyle(color: Colors.grey[600], fontSize: 11),
           ),
         ],
       ),
@@ -403,10 +459,7 @@ class _ProfileTabState extends State<ProfileTab> {
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: TextStyle(
-                    color: Colors.grey[500],
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
                 ),
               ],
             ),
@@ -415,7 +468,7 @@ class _ProfileTabState extends State<ProfileTab> {
             Switch(
               value: true,
               onChanged: (_) {},
-              activeColor: Colors.white,
+              activeThumbColor: Colors.white,
               activeTrackColor: const Color(0xFF2E7D32),
             )
           else
