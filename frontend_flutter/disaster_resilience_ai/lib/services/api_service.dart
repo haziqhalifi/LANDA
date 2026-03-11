@@ -192,6 +192,17 @@ class ApiService {
     throw Exception('Failed to fetch warnings: ${response.statusCode}');
   }
 
+  /// Get a single warning by ID.
+  Future<Map<String, dynamic>> fetchWarning(String warningId) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/warnings/$warningId'),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Warning not found');
+  }
+
   // ── Location & Device ─────────────────────────────────────────────────────
 
   /// Create and broadcast a new warning.
