@@ -38,6 +38,7 @@ class WeatherService {
     required double latitude,
     required double longitude,
   }) async {
+    try {
     final uri = Uri.parse(_reverseGeoUrl).replace(
       queryParameters: {
         'latitude': latitude.toString(),
@@ -80,5 +81,8 @@ class WeatherService {
       return null;
     }
     return parts.join(', ');
+    } catch (_) {
+      return null;
+    }
   }
 }

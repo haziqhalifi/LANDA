@@ -1,5 +1,9 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
 
 class SubmitReportPage extends StatefulWidget {
@@ -21,6 +25,7 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
 
   final ApiService _api = ApiService();
   final _descController = TextEditingController();
+  final _picker = ImagePicker();
 
   String? _selectedType;
   bool _vulnerableHelp = false;
@@ -28,6 +33,8 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
   bool _locating = false;
   double _lat = 3.8077;
   double _lon = 103.3260;
+  String _locationName = 'Fetching location...';
+  XFile? _pickedImage;
 
   @override
   void initState() {
@@ -52,10 +59,57 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
         final pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
         );
-        if (mounted) setState(() { _lat = pos.latitude; _lon = pos.longitude; });
+        if (mounted) {
+          setState(() {
+            _lat = pos.latitude;
+            _lon = pos.longitude;
+          });
+        }
+        await _reverseGeocode(pos.latitude, pos.longitude);
+      } else {
+        if (mounted) {
+          setState(() => _locationName = 'Near ${_lat.toStringAsFixed(4)}, ${_lon.toStringAsFixed(4)}');
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _locationName = 'Near ${_lat.toStringAsFixed(4)}, ${_lon.toStringAsFixed(4)}');
+      }
+    }
+    if (mounted) setState(() => _locating = false);
+  }
+
+  Future<void> _reverseGeocode(double lat, double lon) async {
+    try {
+      final uri = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon',
+      );
+      final resp = await http.get(uri, headers: {
+        'User-Agent': 'DisasterResilienceApp/1.0',
+        'Accept-Language': 'en',
+      }).timeout(const Duration(seconds: 6));
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        final address = data['address'] as Map<String, dynamic>?;
+        if (address != null) {
+          final city = (address['city'] ?? address['town'] ?? address['village'] ?? address['suburb'] ?? '') as String;
+          final state = (address['state'] ?? '') as String;
+          final name = city.isNotEmpty
+              ? (state.isNotEmpty ? '$city, $state' : city)
+              : 'Near ${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}';
+          if (mounted) setState(() => _locationName = name);
+          return;
+        }
       }
     } catch (_) {}
-    if (mounted) setState(() => _locating = false);
+    if (mounted) setState(() => _locationName = 'Near ${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}');
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final image = await _picker.pickImage(source: source, imageQuality: 80, maxWidth: 1920);
+      if (image != null && mounted) setState(() => _pickedImage = image);
+    } catch (_) {}
   }
 
   Future<void> _submit() async {
@@ -67,14 +121,37 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
     }
     setState(() => _loading = true);
     try {
-      await _api.submitReport(
+      final result = await _api.submitReport(
         accessToken: widget.accessToken,
         reportType: _selectedType!,
         description: _descController.text.trim(),
         latitude: _lat,
         longitude: _lon,
+        locationName: _locationName,
         vulnerablePerson: _vulnerableHelp,
       );
+
+      // Upload photo if selected (non-fatal if it fails)
+      if (_pickedImage != null) {
+        final reportId = result['id'] as String?;
+        if (reportId != null) {
+          try {
+            final ext = _pickedImage!.name.split('.').last.toLowerCase();
+            final mime = ext == 'jpg' || ext == 'jpeg' ? 'image/jpeg'
+                : ext == 'png' ? 'image/png'
+                : ext == 'webp' ? 'image/webp'
+                : ext == 'gif' ? 'image/gif'
+                : 'image/jpeg';
+            await _api.uploadReportMedia(
+              accessToken: widget.accessToken,
+              reportId: reportId,
+              imageFile: _pickedImage!,
+              mimeType: mime,
+            );
+          } catch (_) {}
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Report submitted successfully'), backgroundColor: Colors.green),
@@ -90,52 +167,6 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  Widget _buildReportCard({
-    required IconData icon,
-    required Color iconColor,
-    required Color bgColor,
-    required String title,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
-              child: Icon(icon, color: iconColor, size: 32),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF1E293B),
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -227,6 +258,19 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
             ),
             const SizedBox(height: 24),
 
+            // Photo attachment
+            const Text(
+              'Attach Photo',
+              style: TextStyle(
+                color: Color(0xFF1E293B),
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _buildPhotoSection(),
+            const SizedBox(height: 24),
+
             // Vulnerable person toggle
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -272,10 +316,9 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                   Switch(
                     value: _vulnerableHelp,
                     onChanged: (val) => setState(() => _vulnerableHelp = val),
-                    activeThumbColor: Colors.white,
-                    activeTrackColor: Colors.red[400],
-                    inactiveThumbColor: Colors.white,
-                    inactiveTrackColor: Colors.grey[300],
+                    thumbColor: WidgetStateProperty.all(Colors.white),
+                    trackColor: WidgetStateProperty.resolveWith((states) =>
+                      states.contains(WidgetState.selected) ? Colors.red[400] : Colors.grey[300]),
                   ),
                 ],
               ),
@@ -309,7 +352,7 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 5,
                         offset: const Offset(0, 2),
                       ),
@@ -318,18 +361,30 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.location_on_outlined,
-                        color: Colors.green[700],
-                        size: 16,
-                      ),
+                      _locating
+                          ? SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.green[700],
+                              ),
+                            )
+                          : Icon(
+                              Icons.location_on_outlined,
+                              color: Colors.green[700],
+                              size: 16,
+                            ),
                       const SizedBox(width: 8),
-                      const Text(
-                        'Kampung Melayu, Jakarta',
-                        style: TextStyle(
-                          color: Color(0xFF1E293B),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
+                      Flexible(
+                        child: Text(
+                          _locationName,
+                          style: const TextStyle(
+                            color: Color(0xFF1E293B),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -350,16 +405,106 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                icon: const Text(
-                  'Send Incident Report',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                label: const Icon(Icons.send_outlined),
+                icon: _loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text(
+                        'Send Incident Report',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                label: _loading ? const SizedBox.shrink() : const Icon(Icons.send_outlined),
               ),
             ),
             const SizedBox(height: 16),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPhotoSection() {
+    if (_pickedImage != null) {
+      return Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+                    _pickedImage!.path,
+                    height: 180,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: GestureDetector(
+              onTap: () => setState(() => _pickedImage = null),
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close, color: Colors.white, size: 18),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: () => _pickImage(ImageSource.camera),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                bottomLeft: Radius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                child: Column(
+                  children: [
+                    Icon(Icons.camera_alt_outlined, color: Colors.grey[600], size: 28),
+                    const SizedBox(height: 6),
+                    Text('Camera', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Container(width: 1, height: 60, color: Colors.grey[200]),
+          Expanded(
+            child: InkWell(
+              onTap: () => _pickImage(ImageSource.gallery),
+              borderRadius: const BorderRadius.only(
+                topRight: Radius.circular(12),
+                bottomRight: Radius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                child: Column(
+                  children: [
+                    Icon(Icons.photo_library_outlined, color: Colors.grey[600], size: 28),
+                    const SizedBox(height: 6),
+                    Text('Gallery', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -379,7 +524,7 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isSelected ? 0.08 : 0.04),
+              color: Colors.black.withValues(alpha: isSelected ? 0.08 : 0.04),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -391,7 +536,7 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: type.color.withOpacity(isSelected ? 0.2 : 0.1),
+                color: type.color.withValues(alpha: isSelected ? 0.2 : 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(type.icon, color: type.color, size: 32),

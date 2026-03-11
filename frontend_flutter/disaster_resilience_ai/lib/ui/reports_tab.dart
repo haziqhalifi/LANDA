@@ -16,12 +16,14 @@ class ReportsTab extends StatefulWidget {
 class _ReportsTabState extends State<ReportsTab> {
   static const _filters = ['All', 'flood', 'blocked_road', 'landslide', 'medical_emergency'];
   static const _filterLabels = ['All', 'Flood', 'Road Block', 'Landslide', 'Medical'];
+  static const _statusFilters = ['All', 'Verified', 'Pending', 'Most Vouched'];
 
   final ApiService _api = ApiService();
   List<Report> _reports = [];
   bool _loading = true;
   String? _error;
   String _activeFilter = 'All';
+  String _statusFilter = 'All';
   double _userLat = 3.8077;
   double _userLon = 103.3260;
 
@@ -103,9 +105,18 @@ class _ReportsTabState extends State<ReportsTab> {
   }
 
   List<Report> get _filtered {
-    final visible = _reports.where((r) => r.status != 'rejected').toList();
-    if (_activeFilter == 'All') return visible;
-    return visible.where((r) => r.reportType == _activeFilter).toList();
+    var visible = _reports.where((r) => r.status != 'rejected').toList();
+    if (_activeFilter != 'All') {
+      visible = visible.where((r) => r.reportType == _activeFilter).toList();
+    }
+    if (_statusFilter == 'Verified') {
+      visible = visible.where((r) => r.status == 'validated').toList();
+    } else if (_statusFilter == 'Pending') {
+      visible = visible.where((r) => r.status == 'pending').toList();
+    } else if (_statusFilter == 'Most Vouched') {
+      visible.sort((a, b) => b.vouchCount.compareTo(a.vouchCount));
+    }
+    return visible;
   }
 
   // Stats computed from live data
@@ -154,7 +165,7 @@ class _ReportsTabState extends State<ReportsTab> {
               ),
               const SizedBox(height: 24),
 
-              // Filter chips
+              // Type filter chips
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -187,7 +198,49 @@ class _ReportsTabState extends State<ReportsTab> {
                   }),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 10),
+
+              // Status filter chips
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: _statusFilters.map((f) {
+                    final isActive = _statusFilter == f;
+                    final color = f == 'Verified'
+                        ? Colors.green
+                        : f == 'Pending'
+                            ? Colors.orange
+                            : f == 'Most Vouched'
+                                ? Colors.blue
+                                : const Color(0xFF64748B);
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: GestureDetector(
+                        onTap: () => setState(() => _statusFilter = f),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isActive ? color.withValues(alpha: 0.12) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isActive ? color : Colors.grey[300]!,
+                            ),
+                          ),
+                          child: Text(
+                            f,
+                            style: TextStyle(
+                              color: isActive ? color : Colors.grey[600],
+                              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              const SizedBox(height: 20),
 
               // Live feed label
               const Row(
@@ -314,7 +367,6 @@ class _ReportsTabState extends State<ReportsTab> {
     final typeIcon = _iconFor(report.reportType);
     final typeColor = _colorFor(report.reportType);
     final timeAgo = _timeAgo(report.createdAt);
-    final isValidated = report.status == 'validated';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),

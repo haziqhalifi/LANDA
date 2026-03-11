@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
+import 'package:geolocator/geolocator.dart';
 
 class FamilyCheckinPage extends StatefulWidget {
   const FamilyCheckinPage({super.key, required this.accessToken});
@@ -14,6 +15,7 @@ class _FamilyCheckinPageState extends State<FamilyCheckinPage> {
   bool _loading = true;
   List<dynamic> _groups = [];
   String? _error;
+  List<dynamic> _nearbyFloods = [];
 
   // Controllers for create/edit
   final _groupNameCtrl = TextEditingController();
@@ -47,6 +49,32 @@ class _FamilyCheckinPageState extends State<FamilyCheckinPage> {
         _error = e.toString().replaceFirst('Exception: ', '');
         _loading = false;
       });
+    }
+    _loadNearbyFloods();
+  }
+
+  Future<void> _loadNearbyFloods() async {
+    try {
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+
+      final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.low));
+      final result = await _api.fetchNearbyReports(
+        accessToken: widget.accessToken,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        radiusKm: 10.0,
+        statusFilter: 'validated',
+      );
+      final reports = (result['reports'] as List<dynamic>? ?? []);
+      final floods = reports.where((r) => (r as Map)['report_type'] == 'flood').toList();
+      if (mounted) setState(() { _nearbyFloods = floods; });
+    } catch (_) {
+      // Silently ignore — flood banner is best-effort
     }
   }
 
@@ -388,13 +416,51 @@ class _FamilyCheckinPageState extends State<FamilyCheckinPage> {
           ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)))
-          : _error != null
-              ? _buildError()
-              : _groups.isEmpty
-                  ? _buildEmpty()
-                  : _buildGroupList(),
+      body: Column(children: [
+        if (_nearbyFloods.isNotEmpty) _buildFloodBanner(),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)))
+              : _error != null
+                  ? _buildError()
+                  : _groups.isEmpty
+                      ? _buildEmpty()
+                      : _buildGroupList(),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildFloodBanner() {
+    final flood = _nearbyFloods.first as Map<String, dynamic>;
+    final locationName = flood['location_name'] as String? ?? 'nearby area';
+    final distKm = flood['distance_km'] as num?;
+    final distText = distKm != null ? ' (${distKm.toStringAsFixed(1)} km away)' : '';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      color: Colors.red.shade50,
+      child: Row(children: [
+        const Icon(Icons.water_damage, color: Colors.red, size: 22),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('FLOOD ZONE WARNING',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 13)),
+          Text(
+            'Flood confirmed near $locationName$distText',
+            style: const TextStyle(color: Colors.red, fontSize: 12),
+          ),
+        ])),
+        if (_nearbyFloods.length > 1)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
+            child: Text(
+              '${_nearbyFloods.length}',
+              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+          ),
+      ]),
     );
   }
 

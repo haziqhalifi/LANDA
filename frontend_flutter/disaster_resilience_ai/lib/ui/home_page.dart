@@ -23,14 +23,12 @@ import 'package:disaster_resilience_ai/ui/weather_page.dart';
 import 'package:disaster_resilience_ai/ui/chatbot_page.dart';
 import 'package:disaster_resilience_ai/ui/disaster_checklist_page.dart';
 import 'package:disaster_resilience_ai/ui/learn_page.dart';
-import 'package:disaster_resilience_ai/ui/safe_routes_page.dart';
 import 'package:disaster_resilience_ai/models/disaster_news_model.dart';
 import 'package:disaster_resilience_ai/ui/all_warnings_page.dart';
 import 'package:disaster_resilience_ai/ui/all_news_page.dart';
 import 'package:disaster_resilience_ai/ui/widgets/landa_wordmark.dart';
 import 'package:disaster_resilience_ai/services/notification_service.dart';
 import 'package:disaster_resilience_ai/ui/incoming_alert_page.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
