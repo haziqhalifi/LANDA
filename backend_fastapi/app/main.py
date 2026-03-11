@@ -12,11 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.endpoints import (
-    admin, alerts, auth, devices, family, preparedness,
+    admin, alerts, auth, devices, family, learn, preparedness,
     profile, reports, risk_map, sirens, sms, warnings,
 )
-from app.api.v1.endpoints import alerts, auth, devices, family, preparedness, profile, reports, risk_map, warnings
-from app.api.v1.endpoints import admin, learn, sms
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -36,7 +34,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*", "null"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

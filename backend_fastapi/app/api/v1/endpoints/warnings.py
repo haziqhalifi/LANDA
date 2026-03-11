@@ -215,6 +215,93 @@ async def list_warnings(
     return WarningList(count=len(warnings), warnings=warnings)
 
 
+# ── GET /warnings/nearby — warnings affecting a specific location ────────────
+
+@router.get(
+    "/nearby",
+    response_model=WarningList,
+    summary="Get active warnings affecting a specific coordinate",
+)
+async def nearby_warnings(
+    latitude: float = Query(..., ge=-90.0, le=90.0),
+    longitude: float = Query(..., ge=-180.0, le=180.0),
+) -> WarningList:
+    """Return every currently active warning whose affected zone covers
+    the supplied coordinate.  Useful for the mobile app to check on
+    launch what warnings are relevant to the user's current position.
+    """
+    active = warning_db.get_all_active_warnings()
+    matched = get_warnings_for_location(latitude, longitude, active)
+    all_warnings = [
+        _record_to_out(r).model_copy(update={
+            "distance_km": round(haversine(latitude, longitude, r["latitude"], r["longitude"]), 1)
+        })
+        for r in matched
+    ]
+
+    # Include MetMalaysia government alerts only within 50 km.
+    _GOV_RADIUS_KM = 50.0
+    try:
+        gov_rows = met_malaysia.get_active_warnings()
+        for r in gov_rows:
+            coords = _resolve_gov_coords(r)
+            if coords is None:
+                continue
+            gov_lat, gov_lon = coords
+            dist = haversine(latitude, longitude, gov_lat, gov_lon)
+            if dist <= _GOV_RADIUS_KM:
+                out = _gov_alert_to_out(r).model_copy(update={"distance_km": round(dist, 1)})
+                all_warnings.append(out)
+    except Exception:
+        pass
+
+    return WarningList(count=len(all_warnings), warnings=all_warnings)
+
+
+# ── GET /warnings/gov-alerts — raw MetMalaysia alerts ────────────────────────
+
+@router.get(
+    "/gov-alerts",
+    summary="Raw MetMalaysia government alerts (last 24 h)",
+)
+async def gov_alerts() -> dict:
+    """Return the latest MetMalaysia government weather warnings in their raw format."""
+    try:
+        rows = met_malaysia.get_active_warnings()
+        return {"count": len(rows), "alerts": rows}
+    except Exception as exc:
+        return {"count": 0, "alerts": [], "error": str(exc)}
+
+
+# ── GET /warnings/since — new warnings after a timestamp ─────────────────────
+
+@router.get(
+    "/since",
+    response_model=WarningList,
+    summary="Get warnings created after a given timestamp",
+)
+async def warnings_since(
+    since: str = Query(..., description="ISO-8601 timestamp. Returns warnings created after this time."),
+    latitude: float | None = Query(None, ge=-90.0, le=90.0, description="Optional lat to filter by proximity."),
+    longitude: float | None = Query(None, ge=-180.0, le=180.0, description="Optional lon to filter by proximity."),
+) -> WarningList:
+    """Return active warnings created after *since*.
+
+    If latitude and longitude are provided, only returns warnings whose
+    affected zone covers that coordinate (hyper-local filtering).
+    """
+    records = warning_db.get_warnings_since(since)
+    if latitude is not None and longitude is not None:
+        records = [
+            r for r in records
+            if get_warnings_for_location(latitude, longitude, [r])
+        ]
+    return WarningList(
+        count=len(records),
+        warnings=[_record_to_out(r) for r in records],
+    )
+
+
 # ── GET /warnings/{warning_id} — single warning ─────────────────────────────
 
 @router.get(
@@ -244,96 +331,3 @@ async def deactivate_warning(
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Warning not found.")
     return _record_to_out(record)
-
-
-# ── GET /warnings/nearby — warnings affecting a specific location ────────────
-
-@router.get(
-    "/nearby/",
-    response_model=WarningList,
-    summary="Get active warnings affecting a specific coordinate",
-)
-async def nearby_warnings(
-    latitude: float = Query(..., ge=-90.0, le=90.0),
-    longitude: float = Query(..., ge=-180.0, le=180.0),
-) -> WarningList:
-    """Return every currently active warning whose affected zone covers
-    the supplied coordinate.  Useful for the mobile app to check on
-    launch what warnings are relevant to the user's current position.
-    """
-    active = warning_db.get_all_active_warnings()
-    matched = get_warnings_for_location(latitude, longitude, active)
-    all_warnings = [
-        _record_to_out(r).model_copy(update={
-            "distance_km": round(haversine(latitude, longitude, r["latitude"], r["longitude"]), 1)
-        })
-        for r in matched
-    ]
-
-    # Include MetMalaysia government alerts only within 50 km.
-    # Location is resolved by parsing the warning text for state/sea-area keywords.
-    # Warnings with no recognisable location are skipped (irrelevant to user).
-    _GOV_RADIUS_KM = 50.0
-    try:
-        gov_rows = met_malaysia.get_active_warnings()
-        for r in gov_rows:
-            coords = _resolve_gov_coords(r)
-            if coords is None:
-                continue  # No location resolved — skip this warning
-            gov_lat, gov_lon = coords
-            dist = haversine(latitude, longitude, gov_lat, gov_lon)
-            if dist <= _GOV_RADIUS_KM:
-                out = _gov_alert_to_out(r).model_copy(update={"distance_km": round(dist, 1)})
-                all_warnings.append(out)
-    except Exception:
-        pass
-
-    return WarningList(count=len(all_warnings), warnings=all_warnings)
-
-
-# ── GET /warnings/gov-alerts — raw MetMalaysia alerts ────────────────────────
-
-@router.get(
-    "/gov-alerts",
-    summary="Raw MetMalaysia government alerts (last 24 h)",
-)
-async def gov_alerts() -> dict:
-    """Return the latest MetMalaysia government weather warnings in their raw format."""
-    try:
-        rows = met_malaysia.get_active_warnings()
-        return {"count": len(rows), "alerts": rows}
-    except Exception as exc:
-        return {"count": 0, "alerts": [], "error": str(exc)}
-    return WarningList(
-        count=len(matched),
-        warnings=[_record_to_out(r) for r in matched],
-    )
-
-
-# ── GET /warnings/since — new warnings after a timestamp ─────────────────────
-
-@router.get(
-    "/since/",
-    response_model=WarningList,
-    summary="Get warnings created after a given timestamp",
-)
-async def warnings_since(
-    since: str = Query(..., description="ISO-8601 timestamp. Returns warnings created after this time."),
-    latitude: float | None = Query(None, ge=-90.0, le=90.0, description="Optional lat to filter by proximity."),
-    longitude: float | None = Query(None, ge=-180.0, le=180.0, description="Optional lon to filter by proximity."),
-) -> WarningList:
-    """Return active warnings created after *since*.
-
-    If latitude and longitude are provided, only returns warnings whose
-    affected zone covers that coordinate (hyper-local filtering).
-    """
-    records = warning_db.get_warnings_since(since)
-    if latitude is not None and longitude is not None:
-        records = [
-            r for r in records
-            if get_warnings_for_location(latitude, longitude, [r])
-        ]
-    return WarningList(
-        count=len(records),
-        warnings=[_record_to_out(r) for r in records],
-    )

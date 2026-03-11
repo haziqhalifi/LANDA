@@ -221,8 +221,11 @@ async def invite_family_member(
 async def list_pending_invites(
     current_user: UserOut = Depends(get_current_user),
 ) -> FamilyInviteListOut:
-    invites = family_db.list_pending_for_user(current_user.id)
-    return FamilyInviteListOut(count=len(invites), invites=[FamilyInviteOut(**x) for x in invites])
+    try:
+        invites = family_db.list_pending_for_user(current_user.id)
+        return FamilyInviteListOut(count=len(invites), invites=[FamilyInviteOut(**x) for x in invites])
+    except Exception:
+        return FamilyInviteListOut(count=0, invites=[])
 
 
 @router.post(
@@ -252,8 +255,11 @@ async def respond_family_invite(
 async def get_family_member_locations(
     current_user: UserOut = Depends(get_current_user),
 ) -> FamilyMemberLocationListOut:
-    members = family_db.list_family_locations(current_user.id)
-    return FamilyMemberLocationListOut(
-        count=len(members),
-        members=[FamilyMemberLocationOut(**m) for m in members],
-    )
+    try:
+        members = family_db.list_family_locations(current_user.id)
+        return FamilyMemberLocationListOut(
+            count=len(members),
+            members=[FamilyMemberLocationOut(**m) for m in members],
+        )
+    except Exception:
+        return FamilyMemberLocationListOut(count=0, members=[])

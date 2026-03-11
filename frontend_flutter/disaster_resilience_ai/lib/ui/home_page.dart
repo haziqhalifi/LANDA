@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'package:disaster_resilience_ai/models/warning_model.dart';
 import 'package:disaster_resilience_ai/models/prediction_result.dart';
@@ -10,7 +12,12 @@ import 'package:disaster_resilience_ai/services/api_service.dart';
 import 'package:disaster_resilience_ai/services/weather_service.dart';
 import 'package:disaster_resilience_ai/ui/auth_page.dart';
 import 'package:disaster_resilience_ai/ui/emergency_alert_page.dart';
+import 'package:disaster_resilience_ai/ui/submit_report_page.dart';
+import 'package:disaster_resilience_ai/ui/personal_preparedness_page.dart';
+import 'package:disaster_resilience_ai/ui/safe_routes_page.dart';
+import 'package:disaster_resilience_ai/ui/school_preparedness_page.dart';
 import 'package:disaster_resilience_ai/ui/emergency_contacts_page.dart';
+import 'package:disaster_resilience_ai/ui/family_checkin_page.dart';
 import 'package:disaster_resilience_ai/ui/reports_tab.dart';
 import 'package:disaster_resilience_ai/ui/map_tab.dart';
 import 'package:disaster_resilience_ai/ui/profile_tab.dart';
@@ -18,7 +25,6 @@ import 'package:disaster_resilience_ai/ui/weather_page.dart';
 import 'package:disaster_resilience_ai/ui/chatbot_page.dart';
 import 'package:disaster_resilience_ai/ui/disaster_checklist_page.dart';
 import 'package:disaster_resilience_ai/ui/learn_page.dart';
-import 'package:disaster_resilience_ai/ui/safe_routes_page.dart';
 import 'package:disaster_resilience_ai/models/disaster_news_model.dart';
 import 'package:disaster_resilience_ai/ui/all_warnings_page.dart';
 import 'package:disaster_resilience_ai/ui/all_news_page.dart';
@@ -26,8 +32,6 @@ import 'package:disaster_resilience_ai/ui/widgets/landa_wordmark.dart';
 import 'package:disaster_resilience_ai/services/notification_service.dart';
 import 'package:disaster_resilience_ai/ui/incoming_alert_page.dart';
 import 'package:disaster_resilience_ai/ui/siren_management_page.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
@@ -1445,7 +1449,7 @@ class _HomePageState extends State<HomePage> {
       case 0:
         return _buildDashboard();
       case 1:
-        return const ReportsTab();
+        return ReportsTab(accessToken: widget.accessToken);
       case 2:
         return const MapTab();
       case 3:

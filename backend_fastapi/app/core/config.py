@@ -19,6 +19,9 @@ TWILIO_AUTH_TOKEN: str = os.getenv("TWILIO_AUTH_TOKEN", "")
 # Support both TWILIO_PHONE_NUMBER and TWILIO_FROM_NUMBER (legacy)
 TWILIO_PHONE_NUMBER: str = os.getenv("TWILIO_PHONE_NUMBER") or os.getenv("TWILIO_FROM_NUMBER", "")
 
+# ── Anthropic / Claude AI ─────────────────────────────────────────────────────
+ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+
 # ── Admin Website (simple hardcoded credentials) ─────────────────────────────
 # Override these in .env for production
 ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME", "admin")
