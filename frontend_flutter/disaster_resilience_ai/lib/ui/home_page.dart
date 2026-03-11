@@ -1445,7 +1445,7 @@ class _HomePageState extends State<HomePage> {
       case 0:
         return _buildDashboard();
       case 1:
-        return const ReportsTab();
+        return ReportsTab(accessToken: widget.accessToken);
       case 2:
         return const MapTab();
       case 3:

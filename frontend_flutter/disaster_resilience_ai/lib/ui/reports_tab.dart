@@ -2,96 +2,262 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:disaster_resilience_ai/localization/app_language.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
 import 'package:disaster_resilience_ai/services/weather_service.dart';
+import 'package:disaster_resilience_ai/ui/submit_report_page.dart';
 
 class ReportsTab extends StatefulWidget {
-  const ReportsTab({super.key});
+  const ReportsTab({super.key, required this.accessToken});
+
+  final String accessToken;
 
   @override
   State<ReportsTab> createState() => _ReportsTabState();
 }
 
 class _ReportsTabState extends State<ReportsTab> {
-  final _searchController = TextEditingController();
-  bool _showNewReportForm = false;
+  final ApiService _api = ApiService();
+  final WeatherService _weather = WeatherService();
+  bool _loadingLiveReports = false;
+  String? _liveReportsError;
+  List<_ReportItem> _liveItems = [];
+  double _userLat = 3.8077;
+  double _userLon = 103.3260;
+  double _currentLat = 3.8077;
+  double _currentLon = 103.3260;
+  String _locationName = 'My Location';
+  bool _isCurrentLocation = true;
 
-  static const _items = <_ReportItem>[
-    _ReportItem(
-      title: 'Rising Water in Village A',
-      time: '15 mins ago',
-      distance: '200m away',
-      icon: Icons.water_drop,
-      iconBgLight: Color(0xFFDBEAFE),
-      iconBgDark: Color(0xFF1E3A5F),
-      iconColorLight: Color(0xFF2563EB),
-      iconColorDark: Color(0xFF60A5FA),
-      status: 'Verified',
-      statusBgLight: Color(0xFFDCFCE7),
-      statusBgDark: Color(0xFF224032),
-      statusTextLight: Color(0xFF15803D),
-      statusTextDark: Color(0xFF86EFAC),
-      imageUrl:
-          'https://lh3.googleusercontent.com/aida-public/AB6AXuCHYbeNlIKs6fqVtsNvYIrkPsULnbohfaU50CBeHnzlfVOhQjYAJMQKaxMzq9RWIFUOyPznZ6iP_7COtMZpjJDzOF6l50SHshWTCEUYxaJ_99xcHV5QP8xBQn2QYsGvidkMH1MD9hxgiLiIXXtqNhjNJIymusSqMew4Pp-NAXnYeVropTu6V99H2cc8g-gnpCdTcqjlRtWZDqwUdB9SxV27G79aCXZMGwSnhP8_C-NqpdcpSS_28oQz21TkAC8nF0G6rSOA2-wSSQE',
-    ),
-    _ReportItem(
-      title: 'Soil Cracks on Slope B',
-      time: '45 mins ago',
-      distance: '1.2km away',
-      icon: Icons.texture,
-      iconBgLight: Color(0xFFFFEDD5),
-      iconBgDark: Color(0xFF4A2F16),
-      iconColorLight: Color(0xFFEA580C),
-      iconColorDark: Color(0xFFFDBA74),
+  @override
+  void initState() {
+    super.initState();
+    _initLocation();
+  }
+
+  Future<void> _initLocation() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (serviceEnabled) {
+        var permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.always ||
+            permission == LocationPermission.whileInUse) {
+          final pos = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.medium,
+            ),
+          );
+          _userLat = pos.latitude;
+          _userLon = pos.longitude;
+          _currentLat = pos.latitude;
+          _currentLon = pos.longitude;
+          final place = await _weather.fetchLocationName(
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+          );
+          if (mounted && place != null && place.isNotEmpty) {
+            setState(() => _locationName = place);
+          }
+        }
+      }
+    } catch (_) {
+      // keep defaults
+    }
+    if (mounted) _loadNearbyReports();
+  }
+
+  Future<void> _loadNearbyReports() async {
+    if (!mounted) return;
+    setState(() {
+      _loadingLiveReports = true;
+      _liveReportsError = null;
+    });
+
+    try {
+      final token = widget.accessToken;
+      if (token.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _loadingLiveReports = false;
+            _liveReportsError = 'Sign in required to load live reports.';
+          });
+        }
+        return;
+      }
+
+      final payload = await _api.fetchNearbyReports(
+        accessToken: token,
+        latitude: _userLat,
+        longitude: _userLon,
+        radiusKm: 50,
+        statusFilter: 'validated',
+      );
+      final rows = (payload['reports'] as List<dynamic>? ?? const []);
+      final parsed = rows
+          .whereType<Map<String, dynamic>>()
+          .map(_reportItemFromApi)
+          .toList();
+
+      if (mounted) {
+        setState(() {
+          _liveItems = parsed;
+          _loadingLiveReports = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loadingLiveReports = false;
+          _liveReportsError = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
+    }
+  }
+
+  _ReportItem _reportItemFromApi(Map<String, dynamic> row) {
+    final reportType = (row['report_type']?.toString() ?? '').toLowerCase();
+    final status = (row['status']?.toString() ?? 'pending');
+    final distanceKm = (row['distance_km'] as num?)?.toDouble();
+    final createdAtRaw = row['created_at']?.toString();
+    final createdAt = createdAtRaw != null
+        ? DateTime.tryParse(createdAtRaw)?.toLocal()
+        : null;
+    final locationName = row['location_name']?.toString().trim() ?? '';
+    final typeLabel = _titleForType(reportType);
+    final displayTitle = locationName.isNotEmpty
+        ? '$typeLabel - $locationName'
+        : typeLabel;
+    final mediaUrls = (row['media_urls'] as List<dynamic>? ?? const [])
+        .map((e) => e.toString())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    final iconSet = _iconSetForType(reportType);
+    final statusSet = _statusSetForStatus(status);
+    return _ReportItem(
+      id: row['id']?.toString(),
+      title: displayTitle,
+      subtitle: (row['description']?.toString().trim().isNotEmpty ?? false)
+          ? row['description'].toString()
+          : 'Community-submitted report',
+      location: locationName.isNotEmpty ? locationName : _locationName,
+      time: createdAt != null ? _timeAgo(createdAt) : 'Recently',
+      distance: distanceKm != null ? '${distanceKm.toStringAsFixed(1)} km' : null,
+      icon: iconSet.icon,
+      iconBgLight: iconSet.iconBgLight,
+      iconBgDark: iconSet.iconBgDark,
+      iconColorLight: iconSet.iconColorLight,
+      iconColorDark: iconSet.iconColorDark,
+      status: statusSet.status,
+      statusBgLight: statusSet.statusBgLight,
+      statusBgDark: statusSet.statusBgDark,
+      statusTextLight: statusSet.statusTextLight,
+      statusTextDark: statusSet.statusTextDark,
+      imageUrl: mediaUrls.isNotEmpty ? mediaUrls.first : null,
+      userVouched: row['current_user_vouched'] == true,
+      vouchCount: (row['vouch_count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  _IconSet _iconSetForType(String reportType) {
+    switch (reportType) {
+      case 'flood':
+      case 'water_rising':
+        return const _IconSet(
+          icon: Icons.water_drop,
+          iconBgLight: Color(0xFFDBEAFE),
+          iconBgDark: Color(0xFF1E3A5F),
+          iconColorLight: Color(0xFF2563EB),
+          iconColorDark: Color(0xFF60A5FA),
+        );
+      case 'blocked_road':
+        return const _IconSet(
+          icon: Icons.block,
+          iconBgLight: Color(0xFFFFEDD5),
+          iconBgDark: Color(0xFF4A2F16),
+          iconColorLight: Color(0xFFEA580C),
+          iconColorDark: Color(0xFFFDBA74),
+        );
+      case 'medical_emergency':
+        return const _IconSet(
+          icon: Icons.medical_services_rounded,
+          iconBgLight: Color(0xFFFEE2E2),
+          iconBgDark: Color(0xFF4A1F1F),
+          iconColorLight: Color(0xFFDC2626),
+          iconColorDark: Color(0xFFFCA5A5),
+        );
+      default:
+        return const _IconSet(
+          icon: Icons.landslide,
+          iconBgLight: Color(0x1A2D5927),
+          iconBgDark: Color(0xFF223724),
+          iconColorLight: Color(0xFF2D5927),
+          iconColorDark: Color(0xFF86C77C),
+        );
+    }
+  }
+
+  _StatusSet _statusSetForStatus(String status) {
+    final value = status.toLowerCase();
+    if (value == 'validated' || value == 'verified' || value == 'resolved') {
+      return const _StatusSet(
+        status: 'Verified',
+        statusBgLight: Color(0xFFDCFCE7),
+        statusBgDark: Color(0xFF224032),
+        statusTextLight: Color(0xFF15803D),
+        statusTextDark: Color(0xFF86EFAC),
+      );
+    }
+    if (value == 'rejected') {
+      return const _StatusSet(
+        status: 'Rejected',
+        statusBgLight: Color(0xFFFEE2E2),
+        statusBgDark: Color(0xFF4A1F1F),
+        statusTextLight: Color(0xFFB91C1C),
+        statusTextDark: Color(0xFFFCA5A5),
+      );
+    }
+    return const _StatusSet(
       status: 'Pending',
       statusBgLight: Color(0xFFFEF3C7),
       statusBgDark: Color(0xFF453714),
       statusTextLight: Color(0xFFB45309),
       statusTextDark: Color(0xFFFCD34D),
-    ),
-    _ReportItem(
-      title: 'Downed Power Lines',
-      time: '2 hours ago',
-      distance: '500m away',
-      icon: Icons.electrical_services,
-      iconBgLight: Color(0xFFFEE2E2),
-      iconBgDark: Color(0xFF4A1F1F),
-      iconColorLight: Color(0xFFDC2626),
-      iconColorDark: Color(0xFFFCA5A5),
-      status: 'Verified',
-      statusBgLight: Color(0xFFDCFCE7),
-      statusBgDark: Color(0xFF224032),
-      statusTextLight: Color(0xFF15803D),
-      statusTextDark: Color(0xFF86EFAC),
-    ),
-    _ReportItem(
-      title: 'Minor Landslide near Trail',
-      time: '3 hours ago',
-      distance: '2.5km away',
-      icon: Icons.forest,
-      iconBgLight: Color(0x1A2D5927),
-      iconBgDark: Color(0xFF223724),
-      iconColorLight: Color(0xFF2D5927),
-      iconColorDark: Color(0xFF86C77C),
-      status: 'Verified',
-      statusBgLight: Color(0xFFDCFCE7),
-      statusBgDark: Color(0xFF224032),
-      statusTextLight: Color(0xFF15803D),
-      statusTextDark: Color(0xFF86EFAC),
-    ),
-  ];
+    );
+  }
+
+  String _titleForType(String reportType) {
+    switch (reportType) {
+      case 'flood':
+      case 'water_rising':
+        return 'Water Rising';
+      case 'blocked_road':
+        return 'Road Blocked';
+      case 'medical_emergency':
+        return 'Medical Emergency';
+      default:
+        return 'Landslide';
+    }
+  }
+
+  String _timeAgo(DateTime dateTime) {
+    final diff = DateTime.now().difference(dateTime);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} mins ago';
+    if (diff.inHours < 24) return '${diff.inHours} hours ago';
+    return '${diff.inDays} days ago';
+  }
 
   @override
   void dispose() {
-    _searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    const primary = Color(0xFF2D5927);
     final language = AppLanguageScope.of(context).language;
     String tr({required String en, required String ms, required String zh}) {
       return switch (language) {
@@ -111,15 +277,13 @@ class _ReportsTabState extends State<ReportsTab> {
     final subtitleColor = isDark
         ? const Color(0xFF9AA79B)
         : const Color(0xFF64748B);
-    final chipBg = isDark
-        ? const Color(0xFF2D5927).withAlpha(64)
-        : const Color(0xFF2D5927).withAlpha(18);
-    final chipText = isDark ? const Color(0xFF9EDB94) : primary;
+    final visibleItems = _liveItems;
 
     final reportsList = SingleChildScrollView(
       key: const ValueKey('reports_list'),
+      physics: const AlwaysScrollableScrollPhysics(),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 90),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 100),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -137,93 +301,97 @@ class _ReportsTabState extends State<ReportsTab> {
                     color: titleColor,
                   ),
                 ),
-                const Spacer(),
-                FilledButton.icon(
-                  onPressed: () => setState(() => _showNewReportForm = true),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: primary,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 15,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: Text(
-                    tr(en: 'New Report', ms: 'Laporan Baharu', zh: '新报告'),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
               ],
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: tr(en: 'Search', ms: 'Cari', zh: '搜索'),
-                hintStyle: TextStyle(color: subtitleColor),
-                prefixIcon: Icon(Icons.search_rounded, color: subtitleColor),
-                filled: true,
-                fillColor: chipBg,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 11,
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: _showLocationSheet,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: border),
                 ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: primary, width: 1.4),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.location_on_rounded,
+                      size: 18,
+                      color: Color(0xFF2E7D32),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _locationName,
+                        style: TextStyle(
+                          color: titleColor,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (!_isCurrentLocation) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2E7D32).withAlpha(28),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          tr(en: 'Custom', ms: 'Kustom', zh: '自定义'),
+                          style: const TextStyle(
+                            color: Color(0xFF2E7D32),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Text(
+                      tr(en: 'Change', ms: 'Tukar', zh: '更改'),
+                      style: TextStyle(color: subtitleColor, fontSize: 12),
+                    ),
+                    const SizedBox(width: 2),
+                    Icon(Icons.chevron_right, size: 16, color: subtitleColor),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildFilterChip(
-                    icon: Icons.near_me_rounded,
-                    label: tr(en: 'Distance', ms: 'Jarak', zh: '距离'),
-                    color: chipText,
-                    bg: chipBg,
-                    showExpand: true,
-                  ),
+            if (!_isCurrentLocation) ...[
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _userLat = _currentLat;
+                    _userLon = _currentLon;
+                    _isCurrentLocation = true;
+                  });
+                  _weather
+                      .fetchLocationName(latitude: _currentLat, longitude: _currentLon)
+                      .then((name) {
+                    if (mounted) setState(() => _locationName = name ?? 'My Location');
+                  });
+                  _loadNearbyReports();
+                },
+                child: Row(
+                  children: [
+                    Icon(Icons.my_location, size: 13, color: subtitleColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      tr(
+                        en: 'Reset to my location',
+                        ms: 'Tetapkan semula ke lokasi saya',
+                        zh: '重置为我的位置',
+                      ),
+                      style: TextStyle(color: subtitleColor, fontSize: 12),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildFilterChip(
-                    icon: Icons.category,
-                    label: tr(en: 'Type', ms: 'Jenis', zh: '类型'),
-                    color: chipText,
-                    bg: chipBg,
-                    showExpand: true,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _buildFilterChip(
-                    icon: Icons.history,
-                    label: tr(en: 'Recent', ms: 'Terkini', zh: '最新'),
-                    color: chipText,
-                    bg: chipBg,
-                    showExpand: false,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
             const SizedBox(height: 14),
             Text(
               tr(en: 'NEARBY ACTIVITY', ms: 'AKTIVITI BERHAMPIRAN', zh: '附近动态'),
@@ -235,86 +403,297 @@ class _ReportsTabState extends State<ReportsTab> {
               ),
             ),
             const SizedBox(height: 12),
-            ..._items.map(
-              (item) => _buildReportCard(
-                item: item,
-                cardBg: cardBg,
-                border: border,
-                titleColor: titleColor,
-                subtitleColor: subtitleColor,
-                isDark: isDark,
+            if (_loadingLiveReports)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else ...[
+              if (_liveReportsError != null && _liveItems.isEmpty)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF3A2020)
+                        : const Color(0xFFFFF1F2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isDark
+                          ? const Color(0xFF7F1D1D)
+                          : const Color(0xFFFECACA),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tr(
+                          en: 'Unable to load nearby activity.',
+                          ms: 'Tidak dapat memuatkan aktiviti berhampiran.',
+                          zh: '无法加载附近动态。',
+                        ),
+                        style: TextStyle(
+                          color: isDark
+                              ? const Color(0xFFFCA5A5)
+                              : const Color(0xFFB91C1C),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        _liveReportsError!,
+                        style: TextStyle(color: subtitleColor, fontSize: 12),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: _loadNearbyReports,
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: Text(
+                          tr(en: 'Retry', ms: 'Cuba Lagi', zh: '重试'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (_liveReportsError == null && visibleItems.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  child: Center(
+                    child: Text(
+                      tr(
+                        en: 'No nearby activity yet.',
+                        ms: 'Belum ada aktiviti berhampiran.',
+                        zh: '附近暂时没有动态。',
+                      ),
+                      style: TextStyle(color: subtitleColor, fontSize: 13),
+                    ),
+                  ),
+                ),
+              ...visibleItems.map(
+                (item) => _buildReportCard(
+                  item: item,
+                  cardBg: cardBg,
+                  border: border,
+                  titleColor: titleColor,
+                  subtitleColor: subtitleColor,
+                  isDark: isDark,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
     );
 
-    return Container(
-      color: bg,
-      child: SafeArea(
-        top: false,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 260),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (child, animation) {
-            final isForm = child.key == const ValueKey('new_report_form');
-            final begin = isForm ? const Offset(1, 0) : const Offset(-0.12, 0);
-            return ClipRect(
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: begin,
-                  end: Offset.zero,
-                ).animate(animation),
-                child: child,
-              ),
-            );
-          },
-          child: _showNewReportForm
-              ? _InlineNewReportForm(
-                  key: const ValueKey('new_report_form'),
-                  onBack: () => setState(() => _showNewReportForm = false),
-                )
-              : reportsList,
-        ),
+    return Scaffold(
+      backgroundColor: bg,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          final created = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => SubmitReportPage(accessToken: widget.accessToken),
+            ),
+          );
+          if (created == true || created == null) {
+            _loadNearbyReports();
+          }
+        },
+        backgroundColor: const Color(0xFF2E7D32),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_rounded),
+        label: Text(tr(en: 'Report', ms: 'Lapor', zh: '报告')),
       ),
+      body: SafeArea(top: false, child: reportsList),
     );
   }
 
-  Widget _buildFilterChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required Color bg,
-    required bool showExpand,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withAlpha(40)),
+  void _showLocationSheet() {
+    final searchController = TextEditingController();
+    List<Map<String, dynamic>> results = [];
+    bool searching = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF1B251B)
+          : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-          if (showExpand) ...[
-            const SizedBox(width: 2),
-            Icon(Icons.expand_more, size: 14, color: color),
-          ],
-        ],
-      ),
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            Future<void> doSearch(String q) async {
+              if (q.trim().isEmpty) {
+                setSheetState(() {
+                  results = [];
+                  searching = false;
+                });
+                return;
+              }
+              setSheetState(() => searching = true);
+              final found = await _weather.searchLocation(q);
+              setSheetState(() {
+                results = found;
+                searching = false;
+              });
+            }
+
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            final titleColor = isDark ? const Color(0xFFE5E7EB) : const Color(0xFF1E293B);
+            final subColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+            final border = isDark ? const Color(0xFF334236) : const Color(0xFFE2E8F0);
+
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF334236) : Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Choose Location',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                      color: titleColor,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: searchController,
+                    autofocus: true,
+                    style: TextStyle(color: titleColor),
+                    decoration: InputDecoration(
+                      hintText: 'Search city or state in Malaysia...',
+                      hintStyle: TextStyle(color: subColor),
+                      prefixIcon: const Icon(Icons.search, color: Color(0xFF2E7D32)),
+                      suffixIcon: searching
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFF2E7D32),
+                                ),
+                              ),
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: isDark ? const Color(0xFF1E2720) : const Color(0xFFF8F9FA),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: border),
+                      ),
+                    ),
+                    onChanged: (v) {
+                      Future.delayed(const Duration(milliseconds: 400), () {
+                        if (searchController.text == v) doSearch(v);
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.my_location, color: Color(0xFF2E7D32), size: 18),
+                    title: Text(
+                      'Use my current location',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: titleColor,
+                      ),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        _locationName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: subColor,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    onTap: () {
+                      Navigator.pop(sheetCtx);
+                      setState(() {
+                        _userLat = _currentLat;
+                        _userLon = _currentLon;
+                        _isCurrentLocation = true;
+                      });
+                      _weather
+                          .fetchLocationName(latitude: _currentLat, longitude: _currentLon)
+                          .then((name) {
+                        if (mounted) setState(() => _locationName = name ?? 'My Location');
+                      });
+                      _loadNearbyReports();
+                    },
+                  ),
+                  if (results.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 280),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: results.length,
+                        itemBuilder: (_, i) {
+                          final r = results[i];
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
+                            leading: Icon(Icons.location_on_outlined, color: subColor, size: 18),
+                            title: Text(
+                              r['name'] as String,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                                fontSize: 14,
+                                color: titleColor,
+                              ),
+                            ),
+                            onTap: () {
+                              Navigator.pop(sheetCtx);
+                              setState(() {
+                                _userLat = r['lat'] as double;
+                                _userLon = r['lon'] as double;
+                                _locationName = r['name'] as String;
+                                _isCurrentLocation = false;
+                              });
+                              _loadNearbyReports();
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -367,45 +746,84 @@ class _ReportsTabState extends State<ReportsTab> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${item.time} • ${item.distance}',
-                      style: TextStyle(color: subtitleColor, fontSize: 12),
+                      item.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: subtitleColor, fontSize: 12, height: 1.35),
                     ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(Icons.access_time, size: 13, color: subtitleColor),
+                        const SizedBox(width: 4),
+                        Text(item.time, style: TextStyle(color: subtitleColor, fontSize: 11)),
+                        const SizedBox(width: 10),
+                        Icon(Icons.location_on_outlined, size: 13, color: subtitleColor),
+                        const SizedBox(width: 2),
+                        Expanded(
+                          child: Text(
+                            item.distance ?? item.location,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: subtitleColor, fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _buildStatusBadge(item.status, isDark),
                   ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isDark ? item.statusBgDark : item.statusBgLight,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: (isDark ? item.statusTextDark : item.statusTextLight)
-                        .withAlpha(90),
-                  ),
-                ),
-                child: Text(
-                  item.status.toUpperCase(),
-                  style: TextStyle(
-                    color: isDark ? item.statusTextDark : item.statusTextLight,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                  ),
                 ),
               ),
             ],
           ),
-          if (item.imageUrl != null) ...[
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                item.imageUrl!,
-                height: 130,
-                width: double.infinity,
-                fit: BoxFit.cover,
-              ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status, bool isDark) {
+    final normalized = status.toLowerCase();
+    final (icon, fg, bg, label) = switch (normalized) {
+      'verified' || 'validated' => (
+          Icons.verified,
+          isDark ? const Color(0xFF4CAF50) : Colors.green.shade700,
+          isDark ? const Color(0xFF1A2D1A) : Colors.green.shade50,
+          'Verified',
+        ),
+      'resolved' => (
+          Icons.check_circle,
+          isDark ? const Color(0xFF94A3B8) : Colors.grey.shade700,
+          isDark ? const Color(0xFF1A1F1A) : Colors.grey.shade100,
+          'Resolved',
+        ),
+      _ => (
+          Icons.hourglass_top,
+          isDark ? Colors.orange.shade300 : Colors.orange.shade700,
+          isDark ? const Color(0xFF2A1F0F) : Colors.orange.shade50,
+          'Pending Review',
+        ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: fg),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              color: fg,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -413,8 +831,13 @@ class _ReportsTabState extends State<ReportsTab> {
 }
 
 class _InlineNewReportForm extends StatefulWidget {
-  const _InlineNewReportForm({super.key, required this.onBack});
+  const _InlineNewReportForm({
+    super.key,
+    required this.accessToken,
+    required this.onBack,
+  });
 
+  final String accessToken;
   final VoidCallback onBack;
 
   @override
@@ -435,11 +858,6 @@ class _InlineNewReportFormState extends State<_InlineNewReportForm> {
     _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
-  }
-
-  Future<String?> _token() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('auth_access_token');
   }
 
   Future<Map<String, dynamic>> _resolveLocation() async {
@@ -495,8 +913,8 @@ class _InlineNewReportFormState extends State<_InlineNewReportForm> {
   }
 
   Future<void> _pickAndUploadMedia({required bool video}) async {
-    final token = await _token();
-    if (token == null || token.isEmpty) {
+    final token = widget.accessToken;
+    if (token.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -553,8 +971,8 @@ class _InlineNewReportFormState extends State<_InlineNewReportForm> {
   }
 
   Future<void> _submitReport() async {
-    final token = await _token();
-    if (token == null || token.isEmpty) {
+    final token = widget.accessToken;
+    if (token.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -1123,7 +1541,10 @@ class _DashedRRectPainter extends CustomPainter {
 
 class _ReportItem {
   const _ReportItem({
+    this.id,
     required this.title,
+    required this.subtitle,
+    required this.location,
     required this.time,
     required this.distance,
     required this.icon,
@@ -1137,11 +1558,16 @@ class _ReportItem {
     required this.statusTextLight,
     required this.statusTextDark,
     this.imageUrl,
+    this.userVouched = false,
+    this.vouchCount = 0,
   });
 
+  final String? id;
   final String title;
+  final String subtitle;
+  final String location;
   final String time;
-  final String distance;
+  final String? distance;
   final IconData icon;
   final Color iconBgLight;
   final Color iconBgDark;
@@ -1153,4 +1579,82 @@ class _ReportItem {
   final Color statusTextLight;
   final Color statusTextDark;
   final String? imageUrl;
+  final bool userVouched;
+  final int vouchCount;
+
+  _ReportItem copyWith({
+    String? id,
+    String? title,
+    String? subtitle,
+    String? location,
+    String? time,
+    String? distance,
+    IconData? icon,
+    Color? iconBgLight,
+    Color? iconBgDark,
+    Color? iconColorLight,
+    Color? iconColorDark,
+    String? status,
+    Color? statusBgLight,
+    Color? statusBgDark,
+    Color? statusTextLight,
+    Color? statusTextDark,
+    String? imageUrl,
+    bool? userVouched,
+    int? vouchCount,
+  }) {
+    return _ReportItem(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      subtitle: subtitle ?? this.subtitle,
+      location: location ?? this.location,
+      time: time ?? this.time,
+      distance: distance ?? this.distance,
+      icon: icon ?? this.icon,
+      iconBgLight: iconBgLight ?? this.iconBgLight,
+      iconBgDark: iconBgDark ?? this.iconBgDark,
+      iconColorLight: iconColorLight ?? this.iconColorLight,
+      iconColorDark: iconColorDark ?? this.iconColorDark,
+      status: status ?? this.status,
+      statusBgLight: statusBgLight ?? this.statusBgLight,
+      statusBgDark: statusBgDark ?? this.statusBgDark,
+      statusTextLight: statusTextLight ?? this.statusTextLight,
+      statusTextDark: statusTextDark ?? this.statusTextDark,
+      imageUrl: imageUrl ?? this.imageUrl,
+      userVouched: userVouched ?? this.userVouched,
+      vouchCount: vouchCount ?? this.vouchCount,
+    );
+  }
+}
+
+class _IconSet {
+  const _IconSet({
+    required this.icon,
+    required this.iconBgLight,
+    required this.iconBgDark,
+    required this.iconColorLight,
+    required this.iconColorDark,
+  });
+
+  final IconData icon;
+  final Color iconBgLight;
+  final Color iconBgDark;
+  final Color iconColorLight;
+  final Color iconColorDark;
+}
+
+class _StatusSet {
+  const _StatusSet({
+    required this.status,
+    required this.statusBgLight,
+    required this.statusBgDark,
+    required this.statusTextLight,
+    required this.statusTextDark,
+  });
+
+  final String status;
+  final Color statusBgLight;
+  final Color statusBgDark;
+  final Color statusTextLight;
+  final Color statusTextDark;
 }
