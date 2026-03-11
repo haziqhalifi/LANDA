@@ -25,6 +25,7 @@ class NotificationService {
 
   Timer? _timer;
   bool _initialized = false;
+  String? _accessToken;
   double? _userLat;
   double? _userLon;
 
@@ -60,6 +61,7 @@ class NotificationService {
           AndroidFlutterLocalNotificationsPlugin
         >();
     await androidPlugin?.requestNotificationsPermission();
+    await androidPlugin?.requestFullScreenIntentPermission();
     _initialized = true;
   }
 
@@ -72,6 +74,7 @@ class NotificationService {
     required double latitude,
     required double longitude,
   }) {
+    _accessToken = accessToken;
     _userLat = latitude;
     _userLon = longitude;
     _timer?.cancel();
@@ -158,13 +161,13 @@ class NotificationService {
 
     switch (warning.alertLevel) {
       case AlertLevel.evacuate:
-        channelId = 'disaster_evacuate';
+        channelId = 'disaster_evacuate_v2';
         channelName = 'Evacuation Alerts';
         importance = Importance.max;
         priority = Priority.max;
         isEmergency = true;
       case AlertLevel.warning:
-        channelId = 'disaster_warning';
+        channelId = 'disaster_warning_v2';
         channelName = 'Warnings';
         importance = Importance.max;
         priority = Priority.max;
@@ -200,12 +203,13 @@ class NotificationService {
           ? const RawResourceAndroidNotificationSound('alarm')
           : null,
       playSound: true,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
       enableVibration: true,
       vibrationPattern: vibrationPattern,
       ongoing: isEmergency,
       autoCancel: !isEmergency,
       fullScreenIntent: isEmergency,
-      category: isEmergency ? AndroidNotificationCategory.alarm : null,
+      category: isEmergency ? AndroidNotificationCategory.call : null,
       visibility: NotificationVisibility.public,
       styleInformation: BigTextStyleInformation(
         '${warning.hazardType.displayName} — ${warning.description}',
@@ -234,26 +238,52 @@ class NotificationService {
     }
   }
 
-  /// Fire a test notification immediately to verify the system works.
+  /// Fire a test emergency alert to verify call-style warning UX works.
   Future<void> showTestNotification() async {
     if (!_initialized) {
       throw StateError(
         'Notifications are not available on this platform or init() was not called.',
       );
     }
-    const androidDetails = AndroidNotificationDetails(
-      'disaster_test',
-      'Test Notifications',
-      channelDescription: 'Used to verify notifications are working',
-      importance: Importance.max,
-      priority: Priority.high,
-      autoCancel: true,
+    if (_accessToken == null || _accessToken!.isEmpty) {
+      throw StateError(
+        'User session is unavailable for creating a real warning.',
+      );
+    }
+
+    // Dengkil flood test coordinates.
+    const dengkilLat = 2.8595;
+    const dengkilLon = 101.6781;
+
+    final notifyResult = await _api.createWarning(
+      accessToken: _accessToken!,
+      title: 'TEST ALERT: Flood Warning - Dengkil',
+      description:
+          'Real emergency test alert for Dengkil flood response. Proceed to safe high ground and review evacuation route now.',
+      hazardType: 'flood',
+      alertLevel: 'warning',
+      latitude: dengkilLat,
+      longitude: dengkilLon,
+      radiusKm: 8.0,
+      source: 'Test Mode',
     );
-    await _plugin.show(
-      0,
-      '\u2705 Notifications are working!',
-      'You will receive alerts like this when a disaster warning is issued.',
-      const NotificationDetails(android: androidDetails),
-    );
+
+    final warningId = notifyResult['warning_id'] as String?;
+    if (warningId == null || warningId.isEmpty) {
+      throw StateError(
+        'Backend did not return a warning ID for the test alert.',
+      );
+    }
+
+    final warningJson = await _api.fetchWarning(warningId);
+    final warning = Warning.fromJson(warningJson);
+
+    _recentWarnings = [warning, ..._recentWarnings.take(9)];
+
+    // Trigger call-style screen first, then also post a tray notification.
+    if (onEmergencyAlert != null) {
+      onEmergencyAlert!(warning);
+    }
+    await _showNotification(warning);
   }
 }

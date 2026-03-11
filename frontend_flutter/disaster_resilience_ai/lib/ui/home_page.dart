@@ -802,9 +802,9 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(width: 4),
                 Text(
                   _tr(
-                    en: 'How is this calculated?',
-                    ms: 'Bagaimana ini dikira?',
-                    zh: '如何计算？',
+                    en: 'Why did I get this result?',
+                    ms: 'Kenapa saya dapat keputusan ini?',
+                    zh: '为什么会得到这个结果？',
                   ),
                   style: TextStyle(
                     fontSize: 12,
@@ -842,20 +842,32 @@ class _HomePageState extends State<HomePage> {
         case 'rainfall_mm':
           return _tr(en: 'Rainfall', ms: 'Hujan', zh: '降雨量');
         case 'elevation_m':
-          return _tr(en: 'Elevation', ms: 'Ketinggian', zh: '海拔');
+          return _tr(en: 'Ground height', ms: 'Ketinggian tanah', zh: '地面高度');
         case 'slope_deg':
-          return _tr(en: 'Terrain slope', ms: 'Cerun', zh: '坡度');
+          return _tr(en: 'Land steepness', ms: 'Kecerunan tanah', zh: '地势陡度');
         case 'soil_saturation':
-          return _tr(en: 'Soil saturation', ms: 'Ketepuan tanah', zh: '土壤饱和度');
+          return _tr(
+            en: 'How wet the soil is',
+            ms: 'Tahap kebasahan tanah',
+            zh: '土壤湿度',
+          );
         case 'distance_to_river_km':
-          return _tr(en: 'River proximity', ms: 'Jarak sungai', zh: '河流距离');
+          return _tr(
+            en: 'Distance to river',
+            ms: 'Jarak ke sungai',
+            zh: '离河流距离',
+          );
         case 'historical_incidents':
-          return _tr(en: 'Past incidents', ms: 'Insiden lampau', zh: '历史事件');
+          return _tr(
+            en: 'Past floods nearby',
+            ms: 'Banjir lampau berdekatan',
+            zh: '附近过往洪灾',
+          );
         case 'population_density':
           return _tr(
-            en: 'Population density',
-            ms: 'Kepadatan penduduk',
-            zh: '人口密度',
+            en: 'People living nearby',
+            ms: 'Penduduk berdekatan',
+            zh: '附近人口',
           );
         default:
           return key;
@@ -872,22 +884,26 @@ class _HomePageState extends State<HomePage> {
       Text(
         _tr(
           en:
-              'A Gradient Boosting model analyses 7 risk factors from '
-              'live weather data and regional characteristics to estimate '
-              'flood probability in your area.',
+              'This flood score is based on current weather and local area '
+              'conditions, such as rain, ground level, nearby rivers, and '
+              'past flood history.',
           ms:
-              'Model Gradient Boosting menganalisis 7 faktor risiko '
-              'daripada data cuaca langsung dan ciri-ciri kawasan untuk '
-              'menganggar kebarangkalian banjir di kawasan anda.',
+              'Skor banjir ini berdasarkan cuaca semasa dan keadaan kawasan '
+              'setempat, seperti hujan, ketinggian tanah, sungai berdekatan, '
+              'dan sejarah banjir.',
           zh:
-              'Gradient Boosting模型分析来自实时天气数据和区域特征的'
-              '7个风险因素，估算您所在地区的洪水概率。',
+              '这个洪水分数根据当前天气和本地情况计算，'
+              '例如降雨、地势高低、附近河流和过往洪灾记录。',
         ),
         style: TextStyle(fontSize: 11, color: subtleText, height: 1.5),
       ),
       const SizedBox(height: 12),
       Text(
-        _tr(en: 'Factor importance', ms: 'Kepentingan faktor', zh: '因素重要性'),
+        _tr(
+          en: 'What affected this result most',
+          ms: 'Faktor yang paling mempengaruhi keputusan',
+          zh: '最影响结果的因素',
+        ),
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
