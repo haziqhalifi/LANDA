@@ -54,9 +54,6 @@ def _to_out(row: dict, current_user_id: str | None = None) -> ReportOut:
         distance_km=row.get("distance_km"),
         current_user_vouched=vouched,
         current_user_helpful=helpful,
-        media_url=row.get("media_url"),
-        ai_analysis=row.get("ai_analysis"),
-        ai_status=row.get("ai_status"),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -150,62 +147,20 @@ def _nearest_risk_zone_distance(lat: float, lon: float) -> float:
 
 @router.get("/nearby/list", response_model=ReportList)
 async def get_nearby_reports(
-    latitude:      float = Query(..., ge=-90,  le=90),
-    longitude:     float = Query(..., ge=-180, le=180),
-    radius_km:     float = Query(default=10.0, gt=0, le=100),
-    report_type:   str   = Query(default=None),
-    status_filter: str   = Query(default=None),
-    sort_by:       str   = Query(default=None),
-    limit:         int   = Query(default=50, ge=1, le=200),
-    offset:        int   = Query(default=0,  ge=0),
+    latitude:    float = Query(..., ge=-90,  le=90),
+    longitude:   float = Query(..., ge=-180, le=180),
+    radius_km:   float = Query(default=10.0, gt=0, le=100),
+    report_type: str   = Query(default=None),
+    limit:       int   = Query(default=50, ge=1, le=200),
+    offset:      int   = Query(default=0,  ge=0),
     current_user: UserOut = Depends(get_current_user),
 ) -> ReportList:
-    status_list = [status_filter] if status_filter else None
     rows = report_db.get_nearby_reports(
         latitude=latitude, longitude=longitude,
         radius_km=radius_km, report_type=report_type,
-        status_filter=status_list,
         limit=limit, offset=offset,
     )
-    if sort_by == "vouch_count":
-        rows = sorted(rows, key=lambda r: r.get("vouch_count", 0), reverse=True)
     return ReportList(reports=[_to_out(r, current_user.id) for r in rows], total=len(rows))
-
-
-@router.post("/{report_id}/upload-media")
-async def upload_report_media_supabase(
-    report_id: str,
-    file: UploadFile = File(...),
-    current_user: UserOut = Depends(get_current_user),
-) -> dict:
-    """Upload a photo for a community report. Stores in Supabase Storage."""
-    row = report_db.get_report(report_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Report not found")
-    if row["user_id"] != current_user.id:
-        raise HTTPException(status_code=403, detail="Not your report")
-
-    allowed_types = {"image/jpeg", "image/png", "image/webp", "image/gif"}
-    content_type = file.content_type or "image/jpeg"
-    if content_type not in allowed_types:
-        raise HTTPException(status_code=422, detail="Only JPEG, PNG, WebP, or GIF images allowed")
-
-    from app.db.supabase_client import get_storage_client
-    sb = get_storage_client()
-    ext = (file.filename or "photo.jpg").rsplit(".", 1)[-1].lower()
-    path = f"{report_id}/{uuid.uuid4()}.{ext}"
-    content = await file.read()
-
-    try:
-        sb.storage.from_("report-media").upload(
-            path, content, {"content-type": content_type, "upsert": "true"}
-        )
-        public_url = sb.storage.from_("report-media").get_public_url(path)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Storage upload failed: {exc}")
-
-    report_db.update_report_media(report_id, public_url)
-    return {"media_url": public_url, "report_id": report_id}
 
 
 @router.get("/bbox/list", response_model=ReportList)

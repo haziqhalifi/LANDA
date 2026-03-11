@@ -27,7 +27,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import uuid
 from datetime import datetime, timezone
 
 import httpx
@@ -51,9 +50,9 @@ def _severity_from_heading(heading: str) -> str:
 
 
 def _make_dedup_id(item: dict) -> str:
-    """Create a stable UUID-v5 from (heading_en + valid_from) for deduplication."""
+    """Create a stable ID from (heading_en + valid_from) for deduplication."""
     key = (item.get("heading_en") or "") + "|" + (item.get("valid_from") or "")
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
+    return "met_" + hashlib.sha1(key.encode()).hexdigest()[:16]
 
 
 def _parse_warning(item: dict) -> dict:

@@ -181,7 +181,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _selectedBloodType,
+              initialValue: _selectedBloodType,
               decoration: _inputDecoration(
                 'Blood Type',
                 Icons.bloodtype_outlined,

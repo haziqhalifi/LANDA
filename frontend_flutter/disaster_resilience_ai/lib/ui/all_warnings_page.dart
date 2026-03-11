@@ -22,13 +22,13 @@ class AllWarningsPage extends StatelessWidget {
         ? const Color(0xFF334236)
         : const Color(0xFF2D5927).withAlpha(26);
 
-    // Sort by most recent first, then by severity descending as tiebreaker
+    // Sort by severity descending, then by most recent first
     final sorted = [...warnings]
       ..sort((a, b) {
-        final cmp = b.createdAt.compareTo(a.createdAt);
-        return cmp != 0 ? cmp : b.alertLevel.severityIndex.compareTo(
+        final cmp = b.alertLevel.severityIndex.compareTo(
           a.alertLevel.severityIndex,
         );
+        return cmp != 0 ? cmp : b.createdAt.compareTo(a.createdAt);
       });
 
     return Scaffold(

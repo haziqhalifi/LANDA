@@ -306,27 +306,3 @@ async def create_route(
         status=body.status.value,
     )
     return _route_to_out(record)
-
-
-# ── POST /risk-map/predict — AI flood-risk prediction ─────────────────────────
-
-@router.post(
-    "/predict",
-    summary="Run AI flood-risk prediction for a set of environmental features",
-)
-async def predict_risk(body: dict) -> dict:
-    """Accept 7 environmental features and return an AI-based flood risk score.
-
-    Expected body: ``{"features": [rainfall_mm, elevation_m, slope_deg,
-    soil_saturation, distance_to_river_km, historical_incidents,
-    population_density]}``
-    """
-    try:
-        from ai_models.services.inference import predict_risk as _predict
-        return _predict(body)
-    except ValueError as exc:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except Exception as exc:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=500, detail=f"AI model error: {exc}") from exc

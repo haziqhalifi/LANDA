@@ -578,9 +578,8 @@ class _ProfileTabState extends State<ProfileTab> {
                 value: _notificationsEnabled,
                 onChanged: (value) =>
                     setState(() => _notificationsEnabled = value),
-                thumbColor: WidgetStateProperty.all(primary),
-                trackColor: WidgetStateProperty.resolveWith((states) =>
-                  states.contains(WidgetState.selected) ? primary.withAlpha(120) : null),
+                activeTrackColor: primary.withAlpha(120),
+                activeThumbColor: primary,
               ),
             ),
             _buildSettingItem(
@@ -649,9 +648,8 @@ class _ProfileTabState extends State<ProfileTab> {
                 onChanged: (value) {
                   themeController.setDarkMode(value);
                 },
-                thumbColor: WidgetStateProperty.all(primary),
-                trackColor: WidgetStateProperty.resolveWith((states) =>
-                  states.contains(WidgetState.selected) ? primary.withAlpha(120) : null),
+                activeTrackColor: primary.withAlpha(120),
+                activeThumbColor: primary,
               ),
             ),
             const SizedBox(height: 8),
