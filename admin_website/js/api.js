@@ -132,4 +132,17 @@ const api = {
     }
     return res.json();
   },
+
+  async aiAnalyze(token, id) {
+    const res = await fetch(`${API_BASE}/api/v1/admin/reports/${id}/ai-analyze`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401) { logout(); return; }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || 'AI analysis failed');
+    }
+    return res.json();
+  },
 };

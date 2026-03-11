@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:disaster_resilience_ai/models/report_model.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
+import 'package:disaster_resilience_ai/services/weather_service.dart';
 import 'package:disaster_resilience_ai/ui/submit_report_page.dart';
+import 'package:disaster_resilience_ai/ui/location_news_page.dart';
 
 class ReportsTab extends StatefulWidget {
   const ReportsTab({super.key, required this.accessToken});
@@ -19,6 +21,7 @@ class _ReportsTabState extends State<ReportsTab> {
   static const _statusFilters = ['All', 'Verified', 'Pending', 'Most Vouched'];
 
   final ApiService _api = ApiService();
+  final WeatherService _weather = WeatherService();
   List<Report> _reports = [];
   bool _loading = true;
   String? _error;
@@ -26,6 +29,10 @@ class _ReportsTabState extends State<ReportsTab> {
   String _statusFilter = 'All';
   double _userLat = 3.8077;
   double _userLon = 103.3260;
+  double _currentLat = 3.8077;
+  double _currentLon = 103.3260;
+  String _locationName = 'My Location';
+  bool _isCurrentLocation = true;
 
   @override
   void initState() {
@@ -47,6 +54,15 @@ class _ReportsTabState extends State<ReportsTab> {
           );
           _userLat = pos.latitude;
           _userLon = pos.longitude;
+          _currentLat = pos.latitude;
+          _currentLon = pos.longitude;
+          final name = await _weather.fetchLocationName(
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+          );
+          if (mounted && name != null) {
+            setState(() => _locationName = name);
+          }
         }
       }
     } catch (_) {
@@ -128,6 +144,21 @@ class _ReportsTabState extends State<ReportsTab> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => SubmitReportPage(accessToken: widget.accessToken),
+            ),
+          );
+          _fetchReports();
+        },
+        backgroundColor: const Color(0xFF2E7D32),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Report', style: TextStyle(fontWeight: FontWeight.bold)),
+      ),
       body: RefreshIndicator(
         onRefresh: _fetchReports,
         color: const Color(0xFF2E7D32),
@@ -151,7 +182,81 @@ class _ReportsTabState extends State<ReportsTab> {
                 'Real-time situational awareness from your community',
                 style: TextStyle(color: Colors.grey, fontSize: 14),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+
+              // Location bar
+              GestureDetector(
+                onTap: _showLocationSheet,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF2E7D32).withValues(alpha: 0.3)),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2)),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.location_on_rounded, size: 18, color: const Color(0xFF2E7D32)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _locationName,
+                          style: const TextStyle(
+                            color: Color(0xFF1E293B),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (!_isCurrentLocation) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text('Custom', style: TextStyle(color: Color(0xFF2E7D32), fontSize: 10, fontWeight: FontWeight.bold)),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      const SizedBox(width: 4),
+                      Text('Change', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                      const SizedBox(width: 2),
+                      Icon(Icons.chevron_right, size: 16, color: Colors.grey[400]),
+                    ],
+                  ),
+                ),
+              ),
+              if (!_isCurrentLocation) ...[
+                const SizedBox(height: 6),
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _userLat = _currentLat;
+                      _userLon = _currentLon;
+                      _isCurrentLocation = true;
+                    });
+                    // Re-resolve name from GPS
+                    _weather.fetchLocationName(latitude: _currentLat, longitude: _currentLon).then((name) {
+                      if (mounted) setState(() => _locationName = name ?? 'My Location');
+                    });
+                    _fetchReports();
+                  },
+                  child: Row(
+                    children: [
+                      Icon(Icons.my_location, size: 13, color: Colors.grey[500]),
+                      const SizedBox(width: 4),
+                      Text('Reset to my location', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
 
               // Stats row
               Row(
@@ -171,26 +276,48 @@ class _ReportsTabState extends State<ReportsTab> {
                 child: Row(
                   children: List.generate(_filters.length, (i) {
                     final isActive = _activeFilter == _filters[i];
+                    final chipColor = i == 0
+                        ? const Color(0xFF2E7D32)
+                        : _colorFor(_filters[i]);
+                    final chipIcon = i == 0
+                        ? Icons.grid_view_rounded
+                        : _iconFor(_filters[i]);
                     return Padding(
                       padding: EdgeInsets.only(right: i < _filters.length - 1 ? 8 : 0),
                       child: GestureDetector(
                         onTap: () => setState(() => _activeFilter = _filters[i]),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           decoration: BoxDecoration(
-                            color: isActive ? const Color(0xFF2E7D32) : Colors.white,
+                            color: isActive ? chipColor : Colors.white,
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: isActive ? const Color(0xFF2E7D32) : Colors.grey[300]!,
+                              color: isActive ? chipColor : Colors.grey[300]!,
+                              width: isActive ? 1.5 : 1,
                             ),
+                            boxShadow: isActive
+                                ? [BoxShadow(color: chipColor.withValues(alpha: 0.25), blurRadius: 6, offset: const Offset(0, 2))]
+                                : [],
                           ),
-                          child: Text(
-                            _filterLabels[i],
-                            style: TextStyle(
-                              color: isActive ? Colors.white : Colors.grey[700],
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                chipIcon,
+                                size: 14,
+                                color: isActive ? Colors.white : Colors.grey[500],
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _filterLabels[i],
+                                style: TextStyle(
+                                  color: isActive ? Colors.white : Colors.grey[700],
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -198,41 +325,66 @@ class _ReportsTabState extends State<ReportsTab> {
                   }),
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 14),
 
-              // Status filter chips
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
+              // Status segmented control
+              Container(
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
                 child: Row(
-                  children: _statusFilters.map((f) {
+                  children: _statusFilters.asMap().entries.map((entry) {
+                    final i = entry.key;
+                    final f = entry.value;
                     final isActive = _statusFilter == f;
-                    final color = f == 'Verified'
-                        ? Colors.green
+                    final segColor = f == 'Verified'
+                        ? const Color(0xFF2E7D32)
                         : f == 'Pending'
-                            ? Colors.orange
+                            ? Colors.orange[700]!
                             : f == 'Most Vouched'
-                                ? Colors.blue
-                                : const Color(0xFF64748B);
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
+                                ? Colors.blue[700]!
+                                : const Color(0xFF475569);
+                    final segIcon = f == 'Verified'
+                        ? Icons.verified_rounded
+                        : f == 'Pending'
+                            ? Icons.hourglass_top_rounded
+                            : f == 'Most Vouched'
+                                ? Icons.thumb_up_rounded
+                                : Icons.list_rounded;
+                    return Expanded(
                       child: GestureDetector(
                         onTap: () => setState(() => _statusFilter = f),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          margin: const EdgeInsets.all(3),
                           decoration: BoxDecoration(
-                            color: isActive ? color.withValues(alpha: 0.12) : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: isActive ? color : Colors.grey[300]!,
-                            ),
+                            color: isActive ? Colors.white : Colors.transparent,
+                            borderRadius: BorderRadius.circular(9),
+                            boxShadow: isActive
+                                ? [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 4, offset: const Offset(0, 1))]
+                                : [],
                           ),
-                          child: Text(
-                            f,
-                            style: TextStyle(
-                              color: isActive ? color : Colors.grey[600],
-                              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                              fontSize: 12,
-                            ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                segIcon,
+                                size: 13,
+                                color: isActive ? segColor : Colors.grey[400],
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                f == 'Most Vouched' ? 'Top' : f,
+                                style: TextStyle(
+                                  color: isActive ? segColor : Colors.grey[500],
+                                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
@@ -240,7 +392,67 @@ class _ReportsTabState extends State<ReportsTab> {
                   }).toList(),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+
+              // Results count
+              if (!_loading && _error == null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    '${_filtered.length} report${_filtered.length == 1 ? '' : 's'} found',
+                    style: TextStyle(color: Colors.grey[500], fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                ),
+
+              // Disaster overview banner
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LocationNewsPage(
+                      locationName: _locationName,
+                      latitude: _userLat,
+                      longitude: _userLon,
+                      accessToken: widget.accessToken,
+                    ),
+                  ),
+                ),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1B5E20), Color(0xFF2E7D32)],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.map_outlined, color: Colors.white, size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Full Disaster Overview',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            Text(
+                              'Warnings, reports & news for $_locationName',
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 11),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 14),
+                    ],
+                  ),
+                ),
+              ),
 
               // Live feed label
               const Row(
@@ -264,37 +476,139 @@ class _ReportsTabState extends State<ReportsTab> {
               _buildBody(),
               const SizedBox(height: 24),
 
-              // Submit button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => SubmitReportPage(accessToken: widget.accessToken),
-                      ),
-                    );
-                    _fetchReports(); // refresh after returning
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2E7D32),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: const Icon(Icons.add_circle_outline),
-                  label: const Text(
-                    'Submit New Report',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 80), // space so FAB doesn't overlap last card
             ],
           ),
         ),
       ),
+    );
+  }
+
+  void _showLocationSheet() {
+    final searchController = TextEditingController();
+    List<Map<String, dynamic>> results = [];
+    bool searching = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return StatefulBuilder(builder: (ctx, setSheetState) {
+          Future<void> doSearch(String q) async {
+            if (q.trim().isEmpty) {
+              setSheetState(() { results = []; searching = false; });
+              return;
+            }
+            setSheetState(() => searching = true);
+            final found = await _weather.searchLocation(q);
+            setSheetState(() { results = found; searching = false; });
+          }
+
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 20, right: 20, top: 20,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Handle bar
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text('Choose Location', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                const SizedBox(height: 12),
+                // Search field
+                TextField(
+                  controller: searchController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Search city or state in Malaysia...',
+                    prefixIcon: const Icon(Icons.search, color: Color(0xFF2E7D32)),
+                    suffixIcon: searching
+                        ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2E7D32))))
+                        : null,
+                    filled: true,
+                    fillColor: const Color(0xFFF8F9FA),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onChanged: (v) {
+                    Future.delayed(const Duration(milliseconds: 400), () {
+                      if (searchController.text == v) doSearch(v);
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+                // Use current location row
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: const Color(0xFF2E7D32).withValues(alpha: 0.1), shape: BoxShape.circle),
+                    child: const Icon(Icons.my_location, color: Color(0xFF2E7D32), size: 18),
+                  ),
+                  title: const Text('Use my current location', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    setState(() {
+                      _userLat = _currentLat;
+                      _userLon = _currentLon;
+                      _isCurrentLocation = true;
+                    });
+                    _weather.fetchLocationName(latitude: _currentLat, longitude: _currentLon).then((name) {
+                      if (mounted) setState(() => _locationName = name ?? 'My Location');
+                    });
+                    _fetchReports();
+                  },
+                ),
+                if (results.isNotEmpty) ...[
+                  const Divider(height: 1),
+                  const SizedBox(height: 4),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 280),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: results.length,
+                      itemBuilder: (_, i) {
+                        final r = results[i];
+                        return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
+                          leading: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(color: Colors.grey[100], shape: BoxShape.circle),
+                            child: Icon(Icons.location_on_outlined, color: Colors.grey[600], size: 18),
+                          ),
+                          title: Text(r['name'] as String, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
+                          onTap: () {
+                            Navigator.pop(sheetCtx);
+                            setState(() {
+                              _userLat = r['lat'] as double;
+                              _userLon = r['lon'] as double;
+                              _locationName = r['name'] as String;
+                              _isCurrentLocation = false;
+                            });
+                            _fetchReports();
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        });
+      },
     );
   }
 
@@ -435,41 +749,43 @@ class _ReportsTabState extends State<ReportsTab> {
                         style: TextStyle(color: Colors.grey[400], fontSize: 11),
                       ),
                     ],
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () => _vouchReport(report),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: report.currentUserVouched ? Colors.blue[50] : Colors.grey[100],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: report.currentUserVouched ? Colors.blue[300]! : Colors.grey[300]!,
+                    if (report.status != 'validated') ...[
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () => _vouchReport(report),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: report.currentUserVouched ? Colors.blue[50] : Colors.grey[100],
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: report.currentUserVouched ? Colors.blue[300]! : Colors.grey[300]!,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                report.currentUserVouched ? Icons.thumb_up : Icons.thumb_up_outlined,
+                                size: 13,
+                                color: report.currentUserVouched ? Colors.blue[700] : Colors.grey[500],
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                report.vouchCount > 0
+                                    ? '${report.vouchCount} vouch${report.vouchCount == 1 ? '' : 'es'}'
+                                    : 'Vouch',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: report.currentUserVouched ? Colors.blue[700] : Colors.grey[500],
+                                  fontWeight: report.currentUserVouched ? FontWeight.bold : FontWeight.normal,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              report.currentUserVouched ? Icons.thumb_up : Icons.thumb_up_outlined,
-                              size: 13,
-                              color: report.currentUserVouched ? Colors.blue[700] : Colors.grey[500],
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              report.vouchCount > 0
-                                  ? '${report.vouchCount} vouch${report.vouchCount == 1 ? '' : 'es'}'
-                                  : 'Vouch',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: report.currentUserVouched ? Colors.blue[700] : Colors.grey[500],
-                                fontWeight: report.currentUserVouched ? FontWeight.bold : FontWeight.normal,
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
-                    ),
+                    ],
                     if (report.vulnerablePerson) ...[
                       const SizedBox(width: 8),
                       Icon(Icons.priority_high, size: 13, color: Colors.red[400]),

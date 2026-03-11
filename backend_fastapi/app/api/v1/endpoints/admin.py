@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from datetime import datetime, timezone, timedelta
@@ -64,9 +65,18 @@ async def admin_register(body: dict) -> dict:
     password = body.get("password", "")
     if not username or len(password) < 6:
         raise HTTPException(status_code=422, detail="Username required and password must be ≥6 characters")
-    if admin_db.get_admin_by_username(username):
+    try:
+        existing = admin_db.get_admin_by_username(username)
+    except Exception as exc:
+        logger.error("DB error checking admin username: %s", exc)
+        raise HTTPException(status_code=503, detail="Database unavailable — check Supabase connection")
+    if existing:
         raise HTTPException(status_code=409, detail="Username already taken")
-    admin_db.create_admin_user(username=username, password_hash=_hash(password))
+    try:
+        admin_db.create_admin_user(username=username, password_hash=_hash(password))
+    except Exception as exc:
+        logger.error("DB error creating admin user: %s", exc)
+        raise HTTPException(status_code=503, detail=f"Failed to create user: {exc}")
     token = _make_token(username)
     return {"access_token": token, "token_type": "bearer", "expires_in": _EXPIRY_HOURS * 3600}
 
@@ -88,14 +98,14 @@ async def list_reports(
     sub: str = Depends(_verify_token),
 ) -> dict:
     status_filter = [report_status] if report_status else None
-    rows = report_db.get_all_reports(
+    rows, total = report_db.get_all_reports(
         status_filter=status_filter,
         report_type=report_type,
         search=search,
         limit=limit,
         offset=offset,
     )
-    return {"reports": rows, "total": len(rows)}
+    return {"reports": rows, "total": total}
 
 
 @router.get("/reports/{report_id}")
@@ -112,7 +122,18 @@ async def approve_report(report_id: str, sub: str = Depends(_verify_token)) -> d
     if not row:
         raise HTTPException(status_code=404, detail="Report not found")
     updated = report_db.validate_report(report_id, validated_by="admin")
-    return {"message": "Report approved", "report": updated}
+
+    broadcast_result: dict = {"total_affected": 0, "push_sent": 0, "sms_sent": 0, "family_leader_sms": 0}
+    if row.get("report_type") == "flood":
+        try:
+            from app.services.notifications import broadcast_flood_report, notify_family_leaders_of_flood
+            broadcast_result = await broadcast_flood_report(updated)
+            broadcast_result["family_leader_sms"] = await notify_family_leaders_of_flood(updated)
+            logger.info("Auto-SMS broadcast for flood report %s: %s", report_id, broadcast_result)
+        except Exception as exc:
+            logger.error("Auto-SMS failed for report %s: %s", report_id, exc)
+
+    return {"message": "Report approved", "report": updated, "broadcast": broadcast_result}
 
 
 @router.post("/reports/{report_id}/reject")
@@ -147,6 +168,38 @@ async def delete_report(report_id: str, sub: str = Depends(_verify_token)) -> No
 @router.get("/stats")
 async def get_stats(sub: str = Depends(_verify_token)) -> dict:
     return report_db.get_report_stats()
+
+
+# ── AI Analysis ───────────────────────────────────────────────────────────────
+
+@router.post("/reports/{report_id}/ai-analyze")
+async def ai_analyze_report(report_id: str, sub: str = Depends(_verify_token)) -> dict:
+    """Run Claude multi-agent analysis to assess report legitimacy."""
+    row = report_db.get_report(report_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    # Mark as analyzing
+    from app.db.supabase_client import get_client
+    sb = get_client()
+    sb.table("reports").update({"ai_status": "analyzing"}).eq("id", report_id).execute()
+
+    try:
+        from app.services.ai_analysis import analyze_report
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, analyze_report, dict(row))
+
+        sb.table("reports").update({
+            "ai_analysis": result,
+            "ai_status": "done",
+        }).eq("id", report_id).execute()
+
+        logger.info("AI analysis for report %s: score=%s rec=%s", report_id, result.get("score"), result.get("recommendation"))
+        return {"report_id": report_id, "analysis": result}
+    except Exception as exc:
+        sb.table("reports").update({"ai_status": "failed"}).eq("id", report_id).execute()
+        logger.error("AI analysis failed for report %s: %s", report_id, exc)
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {exc}")
 
 
 # ── SMS alert dispatch ─────────────────────────────────────────────────────────

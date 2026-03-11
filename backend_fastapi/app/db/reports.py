@@ -26,6 +26,9 @@ class ReportRecord(TypedDict):
     resolution_reason: str | None
     resolved_at:      str | None
     description_updated_at: str | None
+    media_url:        str | None
+    ai_analysis:      dict | None
+    ai_status:        str | None
     created_at:       str
     updated_at:       str
 
@@ -128,8 +131,8 @@ def get_all_reports(
     search: str | None = None,
     limit: int = 50,
     offset: int = 0,
-) -> list[ReportRecord]:
-    """Admin: return reports with optional filters."""
+) -> tuple[list[ReportRecord], int]:
+    """Admin: return (paginated rows, total_count) with optional filters."""
     sb = get_client()
     query = sb.table("reports").select("*")
     if status_filter:
@@ -143,7 +146,8 @@ def get_all_reports(
         s = search.lower()
         rows = [r for r in rows if s in (r.get("description") or "").lower()
                 or s in (r.get("location_name") or "").lower()]
-    return rows[offset: offset + limit]
+    total = len(rows)
+    return rows[offset: offset + limit], total
 
 
 def get_report_stats() -> dict:
@@ -255,6 +259,15 @@ def delete_report(report_id: str) -> bool:
     sb = get_client()
     sb.table("reports").delete().eq("id", report_id).execute()
     return True
+
+
+def update_report_media(report_id: str, media_url: str) -> None:
+    """Set the media_url for a report after a successful upload."""
+    sb = get_client()
+    sb.table("reports").update({
+        "media_url": media_url,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", report_id).execute()
 
 
 def expire_old_reports() -> int:

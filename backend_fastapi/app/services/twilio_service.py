@@ -43,18 +43,20 @@ def send_flood_alert(
 
     shelter_info = ""
     if shelter_name:
-        shelter_info = f"\n\nNearest shelter: {shelter_name}"
+        shelter_info = f"\nNearest shelter: {shelter_name}"
         if shelter_distance_km:
-            shelter_info += f" ({shelter_distance_km:.1f} km)"
+            shelter_info += f" ({shelter_distance_km:.1f}km)"
         if shelter_phone:
-            shelter_info += f"\nPhone: {shelter_phone}"
+            shelter_info += f" | {shelter_phone}"
+        shelter_info += "\n"
 
     message = (
-        f"FLOOD ALERT\n\n"
-        f"Location: {location_name}\n"
-        f"Distance: {distance_km:.1f} km from your area\n\n"
-        f"Reply:\nSAFE - I evacuated safely\nDANGER - I need help"
-        f"{shelter_info}"
+        f"FLOOD ALERT — LANDA App\n\n"
+        f"A flood has been CONFIRMED at {location_name} "
+        f"({distance_km:.1f}km from you).\n"
+        f"{shelter_info}\n"
+        f"Reply:\nSAFE — I evacuated safely\nDANGER — I need rescue\n\n"
+        f"Stay away from floodwater. Move to higher ground now."
     )
 
     success = False

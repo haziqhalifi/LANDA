@@ -6,8 +6,11 @@ Run with:
 
 from contextlib import asynccontextmanager
 
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.endpoints import alerts, auth, devices, family, preparedness, profile, reports, risk_map, warnings
 from app.api.v1.endpoints import admin, sms
@@ -20,7 +23,6 @@ async def lifespan(app: FastAPI):
     yield
     stop_scheduler()
 
-from app.api.v1.endpoints import alerts, auth, devices, family, profile, risk_map, warnings
 
 app = FastAPI(
     title="Disaster Resilience AI API",
@@ -31,7 +33,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*", "null"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,13 +52,11 @@ app.include_router(preparedness.router,  prefix="/api/v1/preparedness",   tags=[
 app.include_router(family.router,        prefix="/api/v1/family",         tags=["family"])
 app.include_router(admin.router,         prefix="/api/v1/admin",          tags=["admin"])
 app.include_router(sms.router,           prefix="/api/v1/sms",            tags=["sms"])
-app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(warnings.router, prefix="/api/v1/warnings", tags=["warnings"])
-app.include_router(devices.router, prefix="/api/v1/devices", tags=["devices"])
-app.include_router(family.router, prefix="/api/v1/family", tags=["family"])
-app.include_router(risk_map.router, prefix="/api/v1/risk-map", tags=["risk-map"])
-app.include_router(profile.router, prefix="/api/v1/profile", tags=["profile"])
+
+# ── Admin static site (served from /admin-ui — same origin, no CORS issues) ──
+_admin_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "admin_website"))
+if os.path.isdir(_admin_dir):
+    app.mount("/admin-ui", StaticFiles(directory=_admin_dir, html=True), name="admin-ui")
 
 
 @app.get("/", tags=["health"])

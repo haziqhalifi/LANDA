@@ -154,3 +154,75 @@ async def broadcast_flood_report(report: dict) -> dict:
 
     logger.info("Flood report %s broadcast: %d affected, %d push, %d SMS", report["id"], total, push_sent, sms_sent)
     return {"total_affected": total, "push_sent": push_sent, "sms_sent": sms_sent}
+
+
+async def notify_family_leaders_of_flood(report: dict) -> int:
+    """Send SMS to family group leaders whose registered location is within 10km of a validated flood."""
+    from app.core.geo import haversine
+    from app.db.supabase_client import get_client
+    from app.services.twilio_service import send_flood_alert
+
+    report_lat = report.get("latitude")
+    report_lon = report.get("longitude")
+    if report_lat is None or report_lon is None:
+        return 0
+
+    radius_km = 10.0
+    location_name = report.get("location_name", "nearby area")
+    report_id = report["id"]
+    sb = get_client()
+
+    # Get all family groups with their leader_user_id
+    groups_res = sb.table("family_groups").select("id, name, leader_user_id").execute()
+    groups = groups_res.data or []
+    if not groups:
+        return 0
+
+    leader_ids = list({g["leader_user_id"] for g in groups if g.get("leader_user_id")})
+    if not leader_ids:
+        return 0
+
+    # Get device info (location + phone) for each leader
+    devices_res = (
+        sb.table("devices")
+        .select("user_id, latitude, longitude, phone_number")
+        .in_("user_id", leader_ids)
+        .execute()
+    )
+    devices_by_uid = {d["user_id"]: d for d in (devices_res.data or [])}
+
+    sms_sent = 0
+    notified_leaders: set[str] = set()
+
+    for group in groups:
+        leader_id = group.get("leader_user_id")
+        if not leader_id or leader_id in notified_leaders:
+            continue
+
+        device = devices_by_uid.get(leader_id)
+        if not device or not device.get("phone_number"):
+            continue
+        if device.get("latitude") is None or device.get("longitude") is None:
+            continue
+
+        dist = haversine(device["latitude"], device["longitude"], report_lat, report_lon)
+        if dist > radius_km:
+            continue
+
+        event_id = f"family-{report_id}-{leader_id}"
+        sent = send_flood_alert(
+            phone_number=device["phone_number"],
+            user_id=leader_id,
+            location_name=location_name,
+            distance_km=dist,
+            shelter_name="",
+            shelter_phone="",
+            shelter_distance_km=None,
+            event_id=event_id,
+        )
+        if sent:
+            sms_sent += 1
+            notified_leaders.add(leader_id)
+
+    logger.info("Family leader flood notify for report %s: %d SMS sent", report_id, sms_sent)
+    return sms_sent

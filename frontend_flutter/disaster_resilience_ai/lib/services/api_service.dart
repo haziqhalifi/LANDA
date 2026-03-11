@@ -427,7 +427,7 @@ class ApiService {
     required XFile imageFile,
     String mimeType = 'image/jpeg',
   }) async {
-    final uri = Uri.parse('$baseUrl/api/v1/reports/upload-media');
+    final uri = Uri.parse('$baseUrl/api/v1/reports/$reportId/upload-media');
     final bytes = await imageFile.readAsBytes();
     final filename = imageFile.name.isNotEmpty ? imageFile.name : 'photo.jpg';
     final request = http.MultipartRequest('POST', uri)
@@ -442,7 +442,7 @@ class ApiService {
       final streamed = await request.send().timeout(_requestTimeout);
       final resp = await http.Response.fromStream(streamed);
       if (resp.statusCode == 200) {
-        return (jsonDecode(resp.body) as Map<String, dynamic>)['url'] as String;
+        return (jsonDecode(resp.body) as Map<String, dynamic>)['media_url'] as String;
       }
       throw Exception('Media upload failed: ${resp.statusCode}');
     } on TimeoutException {

@@ -60,6 +60,9 @@ class ReportOut(BaseModel):
     distance_km:        float | None = None
     current_user_vouched: bool       = False
     current_user_helpful: bool       = False
+    media_url:          str | None   = None
+    ai_analysis:        dict | None  = None
+    ai_status:          str | None   = None
     created_at:         datetime
     updated_at:         datetime
 
