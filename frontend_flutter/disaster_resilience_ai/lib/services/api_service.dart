@@ -181,6 +181,26 @@ class ApiService {
     }
   }
 
+  Future<http.Response> _patchWithNetworkHandling(
+    Uri uri, {
+    required Map<String, dynamic> body,
+    Map<String, String>? headers,
+  }) async {
+    try {
+      return await _client
+          .patch(
+            uri,
+            headers: {'Content-Type': 'application/json', ...?headers},
+            body: jsonEncode(body),
+          )
+          .timeout(_requestTimeout);
+    } on TimeoutException {
+      throw Exception(_connectivityErrorMessage());
+    } on http.ClientException {
+      throw Exception(_connectivityErrorMessage());
+    }
+  }
+
   String _connectivityErrorMessage() {
     return 'Cannot reach backend at $baseUrl. Ensure FastAPI is running and '
         'use --dart-define=API_BASE_URL=http://<your-host>:8000 if needed.';
@@ -531,16 +551,6 @@ class ApiService {
   }) async {
     final response = await _postWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/sirens/'),
-  // ── AI-Driven Learning / Quiz ─────────────────────────────────────────
-
-  /// Generate an adaptive quiz for a hazard type.
-  Future<Map<String, dynamic>> generateQuiz({
-    required String accessToken,
-    required String hazardType,
-    int numQuestions = 5,
-  }) async {
-    final response = await _postWithNetworkHandling(
-      Uri.parse('$baseUrl/api/v1/learn/quiz/generate'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken',
@@ -555,9 +565,6 @@ class ApiService {
       },
     );
     if (response.statusCode == 201) {
-      body: {'hazard_type': hazardType, 'num_questions': numQuestions},
-    );
-    if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
     throw Exception(_extractErrorMessage(response));
@@ -568,8 +575,79 @@ class ApiService {
     required String sirenId,
     String? warningId,
   }) async {
-    final response = await _client.post(
+    final response = await _postWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/sirens/$sirenId/trigger'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: {if (warningId != null) 'warning_id': warningId},
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<Map<String, dynamic>> stopSiren({
+    required String accessToken,
+    required String sirenId,
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/sirens/$sirenId/stop'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: {},
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<Map<String, dynamic>> updateSirenStatus({
+    required String accessToken,
+    required String sirenId,
+    required String status,
+  }) async {
+    final response = await _patchWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/sirens/$sirenId/status'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: {'status': status},
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  // ── AI-Driven Learning / Quiz ─────────────────────────────────────────
+
+  /// Generate an adaptive quiz for a hazard type.
+  Future<Map<String, dynamic>> generateQuiz({
+    required String accessToken,
+    required String hazardType,
+    int numQuestions = 5,
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/learn/quiz/generate'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: {'hazard_type': hazardType, 'num_questions': numQuestions},
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(_extractErrorMessage(response));
+  }
+
   /// Submit quiz answers and get graded results + recommendations.
   Future<Map<String, dynamic>> submitQuiz({
     required String accessToken,
@@ -582,43 +660,10 @@ class ApiService {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken',
       },
-      body: jsonEncode({if (warningId != null) 'warning_id': warningId}),
       body: {'hazard_type': hazardType, 'answers': answers},
     );
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
-    }
-    throw Exception('Failed to trigger siren (${response.statusCode})');
-  }
-
-  Future<void> stopSiren({
-    required String accessToken,
-    required String sirenId,
-  }) async {
-    final response = await _client.post(
-      Uri.parse('$baseUrl/api/v1/sirens/$sirenId/stop'),
-      headers: {'Authorization': 'Bearer $accessToken'},
-    );
-    if (response.statusCode != 200) {
-      throw Exception('Failed to stop siren (${response.statusCode})');
-    }
-  }
-
-  Future<void> updateSirenStatus({
-    required String accessToken,
-    required String sirenId,
-    required String status,
-  }) async {
-    final response = await _client.patch(
-      Uri.parse('$baseUrl/api/v1/sirens/$sirenId/status'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $accessToken',
-      },
-      body: jsonEncode({'status': status}),
-    );
-    if (response.statusCode != 200) {
-      throw Exception('Failed to update siren status (${response.statusCode})');
     }
     throw Exception(_extractErrorMessage(response));
   }
