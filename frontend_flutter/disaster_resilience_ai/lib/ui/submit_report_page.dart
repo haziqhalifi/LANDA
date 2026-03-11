@@ -24,6 +24,73 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
 
   String? _selectedType;
   bool _vulnerableHelp = false;
+  bool _loading = false;
+  bool _locating = false;
+  double _lat = 3.8077;
+  double _lon = 103.3260;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchLocation();
+  }
+
+  @override
+  void dispose() {
+    _descController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchLocation() async {
+    setState(() => _locating = true);
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm != LocationPermission.deniedForever && perm != LocationPermission.denied) {
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+        );
+        if (mounted) setState(() { _lat = pos.latitude; _lon = pos.longitude; });
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _locating = false);
+  }
+
+  Future<void> _submit() async {
+    if (_selectedType == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select an incident type'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await _api.submitReport(
+        accessToken: widget.accessToken,
+        reportType: _selectedType!,
+        description: _descController.text.trim(),
+        latitude: _lat,
+        longitude: _lon,
+        vulnerablePerson: _vulnerableHelp,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Report submitted successfully'), backgroundColor: Colors.green),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', '')), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   Widget _buildReportCard({
     required IconData icon,
@@ -76,7 +143,9 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 1,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF1E293B)),
