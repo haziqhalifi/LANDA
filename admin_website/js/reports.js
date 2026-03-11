@@ -227,8 +227,16 @@ function openAiReport(id) {
     </div>
 
     ${sources.length ? `<div style="margin-bottom:16px">
-      <p class="text-gray-500 dark:text-gray-400" style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Sources Checked</p>
-      ${sources.map(s => `<p class="text-gray-600 dark:text-gray-400" style="font-size:.8rem;margin-top:3px">• ${s}</p>`).join('')}
+      <p class="text-gray-500 dark:text-gray-400" style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Sources Checked (${sources.length}/4)</p>
+      ${sources.map(s => {
+        const labels = {
+          search_news:              '📰 News Search (DuckDuckGo)',
+          check_weather:            '🌧️ Live Weather (Open-Meteo)',
+          check_gov_alerts:         '🏛️ Government Alerts (MetMalaysia)',
+          check_community_signals:  '👥 Community Signals (Photo, Description, Nearby Reports)',
+        };
+        return `<p class="text-gray-600 dark:text-gray-400" style="font-size:.8rem;margin-top:3px">• ${labels[s] || s}</p>`;
+      }).join('')}
     </div>` : ''}
 
     <div style="border-top:1px solid rgba(128,128,128,.15);padding-top:14px;margin-top:4px">
@@ -284,7 +292,15 @@ function printAiReport() {
     <p class="pr-title">Analysis / Reasoning</p>
     <p style="line-height:1.7;white-space:pre-wrap">${r.ai_analysis?.reasoning || 'No analysis available.'}</p>
     ${Array.isArray(r.ai_analysis?.sources) && r.ai_analysis.sources.length
-      ? `<p class="pr-title">Sources Checked</p>${r.ai_analysis.sources.map(s => `<p>• ${s}</p>`).join('')}`
+      ? `<p class="pr-title">Sources Checked (${r.ai_analysis.sources.length}/4)</p>${r.ai_analysis.sources.map(s => {
+          const labels = {
+            search_news:             'News Search (DuckDuckGo)',
+            check_weather:           'Live Weather (Open-Meteo)',
+            check_gov_alerts:        'Government Alerts (MetMalaysia)',
+            check_community_signals: 'Community Signals (Photo, Description, Nearby Reports)',
+          };
+          return `<p>• ${labels[s] || s}</p>`;
+        }).join('')}`
       : ''}
   `;
   window.print();

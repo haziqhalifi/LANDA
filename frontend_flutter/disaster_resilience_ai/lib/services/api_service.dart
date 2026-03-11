@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart'
-  show TargetPlatform, defaultTargetPlatform, kIsWeb;
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
@@ -77,11 +78,7 @@ class ApiService {
   }) async {
     final response = await _postWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/auth/signup'),
-      body: {
-        'username': username,
-        'email': email,
-        'password': password,
-      },
+      body: {'username': username, 'email': email, 'password': password},
     );
     if (response.statusCode == 201) return AuthResult.fromJson(jsonDecode(response.body));
     throw Exception(_extractErrorMessage(response));
@@ -117,10 +114,7 @@ class ApiService {
       return await _client
           .post(
             uri,
-            headers: {
-              'Content-Type': 'application/json',
-              ...?headers,
-            },
+            headers: {'Content-Type': 'application/json', ...?headers},
             body: jsonEncode(body),
           )
           .timeout(_requestTimeout);
@@ -136,8 +130,26 @@ class ApiService {
     Map<String, String>? headers,
   }) async {
     try {
+      return await _client.get(uri, headers: headers).timeout(_requestTimeout);
+    } on TimeoutException {
+      throw Exception(_connectivityErrorMessage());
+    } on http.ClientException {
+      throw Exception(_connectivityErrorMessage());
+    }
+  }
+
+  Future<http.Response> _patchWithNetworkHandling(
+    Uri uri, {
+    required Map<String, dynamic> body,
+    Map<String, String>? headers,
+  }) async {
+    try {
       return await _client
-          .get(uri, headers: headers)
+          .patch(
+            uri,
+            headers: {'Content-Type': 'application/json', ...?headers},
+            body: jsonEncode(body),
+          )
           .timeout(_requestTimeout);
     } on TimeoutException {
       throw Exception(_connectivityErrorMessage());
@@ -354,6 +366,43 @@ class ApiService {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
     throw Exception(_extractErrorMessage(response));
+  }
+
+  // ── Community Reports ─────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> submitCommunityReport({
+    required String accessToken,
+    required String reportType,
+    required String description,
+    required String locationName,
+    required double latitude,
+    required double longitude,
+    bool vulnerablePerson = false,
+    List<String> mediaUrls = const [],
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/reports/submit'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {
+        'report_type': reportType,
+        'description': description,
+        'location_name': locationName,
+        'latitude': latitude,
+        'longitude': longitude,
+        'vulnerable_person': vulnerablePerson,
+        'media_urls': mediaUrls,
+      },
+    );
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  MediaType? _parseMediaType(String contentType) {
+    final chunks = contentType.split('/');
+    if (chunks.length != 2) return null;
+    return MediaType(chunks[0], chunks[1]);
   }
 
   /// Generic GET that returns decoded JSON or null on failure.
@@ -652,6 +701,131 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 201) {
       return jsonDecode(response.body);
     }
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  // ── IoT Sirens ───────────────────────────────────────────────────────────
+
+  Future<List<dynamic>> fetchSirens() async {
+    final response = await _getWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/sirens/'),
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body) as List;
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<Map<String, dynamic>> registerSiren({
+    required String accessToken,
+    required String name,
+    required double latitude,
+    required double longitude,
+    double radiusKm = 5.0,
+    String? endpointUrl,
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/sirens/'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {
+        'name': name,
+        'latitude': latitude,
+        'longitude': longitude,
+        'radius_km': radiusKm,
+        if (endpointUrl != null) 'endpoint_url': endpointUrl,
+      },
+    );
+    if (response.statusCode == 201) return jsonDecode(response.body);
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<Map<String, dynamic>> triggerSiren({
+    required String accessToken,
+    required String sirenId,
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/sirens/$sirenId/trigger'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {},
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<Map<String, dynamic>> stopSiren({
+    required String accessToken,
+    required String sirenId,
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/sirens/$sirenId/stop'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {},
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<Map<String, dynamic>> updateSirenStatus({
+    required String accessToken,
+    required String sirenId,
+    required String status,
+  }) async {
+    final response = await _patchWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/sirens/$sirenId/status'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {'status': status},
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  // ── AI Risk Prediction ────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> predictRisk(List<double> features) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/risk-map/predict'),
+      body: {'features': features},
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  // ── Adaptive Learning ─────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> fetchLearningProgress({
+    required String accessToken,
+  }) async {
+    final response = await _getWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/learn/progress'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<Map<String, dynamic>> generateQuiz({
+    required String accessToken,
+    required String hazardType,
+    int numQuestions = 5,
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/learn/quiz/generate'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {'hazard_type': hazardType, 'num_questions': numQuestions},
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<Map<String, dynamic>> submitQuiz({
+    required String accessToken,
+    required String hazardType,
+    required List<Map<String, dynamic>> answers,
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/learn/quiz/submit'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {'hazard_type': hazardType, 'answers': answers},
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body);
     throw Exception(_extractErrorMessage(response));
   }
 }

@@ -5,6 +5,8 @@ import 'package:disaster_resilience_ai/models/weather_model.dart';
 class WeatherService {
   static const String _baseUrl = 'https://api.open-meteo.com/v1/forecast';
   static const String _reverseGeoUrl =
+      'https://geocoding-api.open-meteo.com/v1/reverse';
+  static const String _osmReverseGeoUrl =
       'https://nominatim.openstreetmap.org/reverse';
 
   Future<WeatherData> fetchWeather({
@@ -38,40 +40,107 @@ class WeatherService {
     required double latitude,
     required double longitude,
   }) async {
-    try {
-    final uri = Uri.parse(_reverseGeoUrl).replace(
+    final exact = await _fetchExactLocationName(
+      latitude: latitude,
+      longitude: longitude,
+    );
+    if (exact != null && exact.isNotEmpty) {
+      return exact;
+    }
+
+    return _fetchApproximateLocationName(
+      latitude: latitude,
+      longitude: longitude,
+    );
+  }
+
+  Future<String?> _fetchExactLocationName({
+    required double latitude,
+    required double longitude,
+  }) async {
+    final uri = Uri.parse(_osmReverseGeoUrl).replace(
       queryParameters: {
         'lat': latitude.toString(),
         'lon': longitude.toString(),
-        'format': 'json',
-        'accept-language': 'en',
+        'format': 'jsonv2',
+        'zoom': '18',
+        'addressdetails': '1',
       },
     );
 
-    final response = await http.get(uri, headers: {
-      'User-Agent': 'DisasterResilienceApp/1.0',
-    }).timeout(const Duration(seconds: 10));
+    final response = await http
+        .get(
+          uri,
+          headers: {
+            'User-Agent': 'DisasterResilienceAI/1.0 (contact: app-client)',
+          },
+        )
+        .timeout(const Duration(seconds: 10));
+
     if (response.statusCode != 200) {
       return null;
     }
 
     final json = jsonDecode(response.body) as Map<String, dynamic>;
-    final address = json['address'] as Map<String, dynamic>?;
-    if (address == null) return null;
+    final displayName = json['display_name']?.toString();
+    if (displayName == null || displayName.isEmpty) {
+      return null;
+    }
 
-    final city = (address['city'] ?? address['town'] ?? address['village'] ?? address['suburb'])
-        ?.toString();
-    final state = address['state']?.toString();
-
-    final parts = [
-      if (city != null && city.isNotEmpty) city,
-      if (state != null && state.isNotEmpty) state,
-    ];
-
+    // Keep label readable while still specific.
+    final parts = displayName
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
     if (parts.isEmpty) {
       return null;
     }
-    return parts.join(', ');
+    return parts.take(3).join(', ');
+  }
+
+  Future<String?> _fetchApproximateLocationName({
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      final uri = Uri.parse(_reverseGeoUrl).replace(
+        queryParameters: {
+          'latitude': latitude.toString(),
+          'longitude': longitude.toString(),
+          'language': 'en',
+        },
+      );
+
+      final response = await http.get(uri).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final resultsRaw = json['results'];
+      if (resultsRaw is! List || resultsRaw.isEmpty) {
+        return null;
+      }
+
+      final first = resultsRaw.first;
+      if (first is! Map<String, dynamic>) {
+        return null;
+      }
+
+      final city = (first['city'] ?? first['name'] ?? first['locality'])
+          ?.toString();
+      final state = first['state']?.toString();
+
+      final parts = [
+        if (city != null && city.isNotEmpty) city,
+        if (state != null && state.isNotEmpty) state,
+      ];
+
+      if (parts.isEmpty) {
+        return null;
+      }
+      return parts.join(', ');
     } catch (_) {
       return null;
     }

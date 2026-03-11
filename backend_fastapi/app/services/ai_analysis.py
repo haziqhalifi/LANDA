@@ -83,6 +83,73 @@ def _gov_alert_agent(latitude: float, longitude: float) -> str:
         return f"Government alert data unavailable: {exc}"
 
 
+def _community_signals_agent(report_id: str) -> str:
+    """
+    Evaluate internal credibility signals from the report record itself:
+    photo evidence, description quality, vulnerability flag, and recent
+    corroborating reports from the same area.
+    """
+    try:
+        from app.db.supabase_client import get_client
+        sb = get_client()
+
+        # Fetch the target report
+        res = sb.table("reports").select("*").eq("id", report_id).single().execute()
+        row = res.data or {}
+
+        signals: list[str] = []
+
+        # Photo evidence
+        if row.get("media_url"):
+            signals.append("Photo evidence attached — increases credibility.")
+        else:
+            signals.append("No photo attached — cannot visually verify.")
+
+        # Description quality
+        desc = (row.get("description") or "").strip()
+        if len(desc) >= 60:
+            signals.append(f"Detailed description provided ({len(desc)} chars) — reporter appears engaged.")
+        elif len(desc) >= 15:
+            signals.append(f"Brief description provided ({len(desc)} chars).")
+        else:
+            signals.append("Very short or missing description — low detail.")
+
+        # Vulnerable person flag
+        if row.get("vulnerable_person"):
+            signals.append("Reporter flagged a vulnerable person — elevated urgency signal.")
+
+        # Corroborating reports nearby (same type, last 24 h, within ~0.1 deg)
+        lat = row.get("latitude") or 0
+        lon = row.get("longitude") or 0
+        rtype = row.get("report_type", "")
+        from datetime import datetime, timezone, timedelta
+        since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        nearby = (
+            sb.table("reports")
+            .select("id")
+            .eq("report_type", rtype)
+            .neq("id", report_id)
+            .gte("created_at", since)
+            .gte("latitude",  lat - 0.1)
+            .lte("latitude",  lat + 0.1)
+            .gte("longitude", lon - 0.1)
+            .lte("longitude", lon + 0.1)
+            .execute()
+        )
+        nearby_count = len(nearby.data or [])
+        if nearby_count > 0:
+            signals.append(
+                f"{nearby_count} similar report(s) submitted nearby in the last 24 h — "
+                "corroborating community evidence."
+            )
+        else:
+            signals.append("No other similar reports in this area in the last 24 h.")
+
+        return " | ".join(signals)
+    except Exception as exc:
+        return f"Community signals unavailable: {exc}"
+
+
 # ── Claude tool definitions ────────────────────────────────────────────────────
 
 _TOOLS = [
@@ -133,14 +200,35 @@ _TOOLS = [
             "required": ["latitude", "longitude"],
         },
     },
+    {
+        "name": "check_community_signals",
+        "description": (
+            "Evaluate internal credibility signals from the report itself: "
+            "photo evidence, description quality, vulnerable-person flag, and whether "
+            "other reporters submitted similar reports nearby in the last 24 hours. "
+            "Always call this tool — it replaces the community upvote signal."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "report_id": {
+                    "type": "string",
+                    "description": "The UUID of the report to evaluate.",
+                }
+            },
+            "required": ["report_id"],
+        },
+    },
 ]
 
 _SYSTEM = (
     "You are a disaster intelligence analyst for the LANDA Disaster Resilience Platform in Malaysia. "
     "You analyze community-submitted disaster reports to determine their legitimacy.\n\n"
     "Your job:\n"
-    "1. Use ALL three provided tools to gather evidence: search_news, check_weather, check_gov_alerts\n"
-    "2. Synthesize the evidence into a legitimacy assessment\n"
+    "1. You MUST call ALL FOUR tools before giving your answer: "
+    "search_news, check_weather, check_gov_alerts, check_community_signals. "
+    "Do not skip any tool — each provides a unique evidence source.\n"
+    "2. Synthesize all four evidence streams into a legitimacy assessment.\n"
     "3. Return ONLY a JSON object (no markdown, no extra text) with these exact keys:\n"
     '   {"score": <int 0-100>, "reasoning": "<2-3 sentences>", "recommendation": "<approve|monitor|reject>"}\n\n'
     "Scoring guide: 80-100=very likely real, 60-79=probably real, 40-59=uncertain, "
@@ -179,13 +267,14 @@ def analyze_report(report: dict) -> dict:
 
     user_message = (
         f"Analyze this community disaster report and determine if it is legitimate:\n\n"
+        f"Report ID: {report.get('id', 'unknown')}\n"
         f"Type: {report.get('report_type', 'unknown')}\n"
         f"Location: {report.get('location_name', 'unknown')} "
         f"(lat={report.get('latitude', 0)}, lon={report.get('longitude', 0)})\n"
         f"Description: {report.get('description', '(no description)')}\n"
-        f"Community vouches: {report.get('vouch_count', 0)}\n"
         f"Vulnerable person involved: {report.get('vulnerable_person', False)}\n\n"
-        f"Use all three tools (search_news, check_weather, check_gov_alerts), then return your JSON assessment."
+        f"You MUST call all four tools — search_news, check_weather, check_gov_alerts, "
+        f"check_community_signals — before returning your JSON assessment."
     )
 
     messages: list[dict] = [{"role": "user", "content": user_message}]
@@ -222,6 +311,8 @@ def analyze_report(report: dict) -> dict:
                     result = _weather_agent(float(inp.get("latitude", 0)), float(inp.get("longitude", 0)))
                 elif block.name == "check_gov_alerts":
                     result = _gov_alert_agent(float(inp.get("latitude", 0)), float(inp.get("longitude", 0)))
+                elif block.name == "check_community_signals":
+                    result = _community_signals_agent(inp.get("report_id", report.get("id", "")))
                 else:
                     result = "Unknown tool called."
 

@@ -5,15 +5,16 @@ Run with:
 """
 
 from contextlib import asynccontextmanager
-
-import os
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.v1.endpoints import alerts, auth, devices, family, preparedness, profile, reports, risk_map, warnings
-from app.api.v1.endpoints import admin, sms
+from app.api.v1.endpoints import (
+    admin, alerts, auth, devices, family, learn, preparedness,
+    profile, reports, risk_map, sirens, sms, warnings,
+)
 from app.scheduler import start_scheduler, stop_scheduler
 
 
@@ -39,6 +40,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_upload_dir = Path(__file__).resolve().parents[1] / "uploads"
+_upload_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(_upload_dir)), name="uploads")
+
 # ── Routes ──────────────────────────────────────────────────────────────────
 
 app.include_router(alerts.router,        prefix="/api/v1/alerts",        tags=["alerts"])
@@ -52,11 +57,8 @@ app.include_router(preparedness.router,  prefix="/api/v1/preparedness",   tags=[
 app.include_router(family.router,        prefix="/api/v1/family",         tags=["family"])
 app.include_router(admin.router,         prefix="/api/v1/admin",          tags=["admin"])
 app.include_router(sms.router,           prefix="/api/v1/sms",            tags=["sms"])
-
-# ── Admin static site (served from /admin-ui — same origin, no CORS issues) ──
-_admin_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "admin_website"))
-if os.path.isdir(_admin_dir):
-    app.mount("/admin-ui", StaticFiles(directory=_admin_dir, html=True), name="admin-ui")
+app.include_router(sirens.router,        prefix="/api/v1/sirens",         tags=["sirens"])
+app.include_router(learn.router,         prefix="/api/v1/learn",          tags=["learn"])
 
 
 @app.get("/", tags=["health"])

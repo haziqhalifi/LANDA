@@ -17,15 +17,19 @@ _MOCK_MODE = not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMB
 def _print_sms_preview(alert_type: str, to_number: str, body: str) -> None:
     """Print a clearly formatted SMS preview to stdout for demo/logging purposes."""
     border = "=" * 62
-    print(f"\n{border}", flush=True)
-    print(f"  LANDA  |  Twilio SMS  |  {alert_type}", flush=True)
-    print(f"  To   : {to_number}", flush=True)
-    print(f"  From : {TWILIO_PHONE_NUMBER or '(mock)'}", flush=True)
-    print(f"  Mode : {'LIVE' if not _MOCK_MODE else 'MOCK'}", flush=True)
-    print(f"{'─' * 62}", flush=True)
-    for line in body.split("\n"):
-        print(f"  {line}", flush=True)
-    print(f"{border}\n", flush=True)
+    divider = "-" * 62
+    try:
+        print(f"\n{border}", flush=True)
+        print(f"  LANDA  |  Twilio SMS  |  {alert_type}", flush=True)
+        print(f"  To   : {to_number}", flush=True)
+        print(f"  From : {TWILIO_PHONE_NUMBER or '(mock)'}", flush=True)
+        print(f"  Mode : {'LIVE' if not _MOCK_MODE else 'MOCK'}", flush=True)
+        print(f"{divider}", flush=True)
+        for line in body.split("\n"):
+            print(f"  {line}", flush=True)
+        print(f"{border}\n", flush=True)
+    except UnicodeEncodeError:
+        logger.info("SMS preview [%s] to %s: %s", alert_type, to_number, body[:120])
 
 
 def _get_client():

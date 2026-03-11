@@ -11,9 +11,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.db import dun_boundaries as dunboundary_db
 from app.api.v1.dependencies import get_current_user
+from app.db import district_boundaries as dboundary_db
 from app.db import risk_zones as rz_db
 from app.schemas.risk_map import (
+    AdminAreaOut,
     EvacuationCentreCreate,
     EvacuationCentreList,
     EvacuationCentreOut,
@@ -59,6 +62,124 @@ def _route_to_out(rec: dict) -> EvacuationRouteOut:
     )
 
 
+def _point_in_polygon(lat: float, lon: float, polygon: list[dict]) -> bool:
+    # Ray-casting algorithm for point-in-polygon checks.
+    inside = False
+    j = len(polygon) - 1
+    for i in range(len(polygon)):
+        yi = polygon[i]["lat"]
+        xi = polygon[i]["lon"]
+        yj = polygon[j]["lat"]
+        xj = polygon[j]["lon"]
+
+        intersects = ((yi > lat) != (yj > lat)) and (
+            lon < (xj - xi) * (lat - yi) / ((yj - yi) or 1e-12) + xi
+        )
+        if intersects:
+            inside = not inside
+        j = i
+    return inside
+
+
+def _extract_boundary_from_geometry(geometry: dict) -> list[dict]:
+    gtype = geometry.get("type")
+    coords = geometry.get("coordinates")
+    if not coords:
+        return []
+
+    rings: list[list[list[float]]] = []
+    if gtype == "Polygon":
+        # Polygon coordinates => [ [ [lon, lat], ... ] , ... ]
+        if coords and isinstance(coords[0], list):
+            rings.append(coords[0])
+    elif gtype == "MultiPolygon":
+        # MultiPolygon coordinates => [ polygon1, polygon2, ... ]
+        for polygon in coords:
+            if polygon and isinstance(polygon, list) and polygon[0]:
+                rings.append(polygon[0])
+
+    if not rings:
+        return []
+
+    # Use the largest outer ring to represent the district boundary.
+    ring = max(rings, key=len)
+    boundary = []
+    for pair in ring:
+        if not isinstance(pair, list) or len(pair) < 2:
+            continue
+        lon, lat = pair[0], pair[1]
+        boundary.append({"lat": float(lat), "lon": float(lon)})
+    return boundary
+
+
+def _load_admin_boundaries() -> list[dict]:
+    # Prefer finer-grained DUN boundaries when available.
+    dun_rows = dunboundary_db.list_dun_boundaries(active_only=True)
+    boundaries = []
+    for row in dun_rows:
+        boundary = _extract_boundary_from_geometry(row.get("geometry") or {})
+        if len(boundary) < 3:
+            continue
+        boundaries.append(
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "boundary": boundary,
+            }
+        )
+    if boundaries:
+        return boundaries
+
+    # Fallback to district boundaries for states that do not have DUN data yet.
+    rows = dboundary_db.list_district_boundaries(active_only=True)
+    boundaries = []
+    for row in rows:
+        boundary = _extract_boundary_from_geometry(row.get("geometry") or {})
+        if len(boundary) < 3:
+            continue
+        boundaries.append(
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "boundary": boundary,
+            }
+        )
+    return boundaries
+
+
+def _aggregate_admin_areas(
+    zones: list[dict],
+    hazard_type: str,
+    boundaries: list[dict],
+) -> list[AdminAreaOut]:
+    hazard_zones = [z for z in zones if z.get("hazard_type") == hazard_type]
+    areas: list[AdminAreaOut] = []
+
+    for area in boundaries:
+        boundary = area["boundary"]
+        area_zones = [
+            z
+            for z in hazard_zones
+            if _point_in_polygon(z["latitude"], z["longitude"], boundary)
+        ]
+        if not area_zones:
+            continue
+
+        avg_risk = sum(z["risk_score"] for z in area_zones) / len(area_zones)
+        areas.append(
+            AdminAreaOut(
+                id=f"{area['id']}-{hazard_type}",
+                name=area["name"],
+                hazard_type=hazard_type,
+                risk_score=round(avg_risk, 4),
+                zone_count=len(area_zones),
+                boundary=[WaypointOut(lat=p["lat"], lon=p["lon"]) for p in boundary],
+            )
+        )
+
+    return areas
+
+
 # ── GET /risk-map — combined map data (all layers) ──────────────────────────
 
 @router.get(
@@ -76,11 +197,17 @@ async def get_map_data(
     zones = rz_db.list_risk_zones(active_only=True, hazard_type=hazard_type)
     centres = rz_db.list_evacuation_centres(active_only=True)
     routes = rz_db.list_evacuation_routes(active_only=True)
+    boundaries = _load_admin_boundaries()
+    area_hazards = [hazard_type] if hazard_type else ["flood", "landslide"]
+    admin_areas: list[AdminAreaOut] = []
+    for h in area_hazards:
+        admin_areas.extend(_aggregate_admin_areas(zones, h, boundaries))
 
     return MapDataResponse(
         risk_zones=[_zone_to_out(z) for z in zones],
         evacuation_centres=[_centre_to_out(c) for c in centres],
         evacuation_routes=[_route_to_out(r) for r in routes],
+        admin_areas=admin_areas,
     )
 
 
@@ -179,3 +306,27 @@ async def create_route(
         status=body.status.value,
     )
     return _route_to_out(record)
+
+
+# ── POST /risk-map/predict — AI flood-risk prediction ─────────────────────────
+
+@router.post(
+    "/predict",
+    summary="Run AI flood-risk prediction for a set of environmental features",
+)
+async def predict_risk(body: dict) -> dict:
+    """Accept 7 environmental features and return an AI-based flood risk score.
+
+    Expected body: ``{"features": [rainfall_mm, elevation_m, slope_deg,
+    soil_saturation, distance_to_river_km, historical_incidents,
+    population_density]}``
+    """
+    try:
+        from ai_models.services.inference import predict_risk as _predict
+        return _predict(body)
+    except ValueError as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=f"AI model error: {exc}") from exc

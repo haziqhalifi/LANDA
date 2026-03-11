@@ -2,21 +2,36 @@
 
 from __future__ import annotations
 
-import uuid as uuid_module
+import logging
+import uuid
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 
 from app.api.v1.dependencies import get_current_user
 from app.db import reports as report_db
 from app.schemas.report import (
     BoundingBoxQuery, HelpfulOut, ReportCreate,
-    ReportDescriptionUpdate, ReportList, ReportOut,
+    ReportDescriptionUpdate, ReportList, ReportMediaUploadOut, ReportOut,
     ReportRejectRequest, VouchOut,
 )
 from app.schemas.user import UserOut
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+_MEDIA_DIR = Path(__file__).resolve().parents[4] / "uploads" / "reports"
+_ALLOWED_MEDIA = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "video/mp4",
+    "video/quicktime",
+    "video/webm",
+}
+_MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 
 def _to_out(row: dict, current_user_id: str | None = None) -> ReportOut:
@@ -32,8 +47,10 @@ def _to_out(row: dict, current_user_id: str | None = None) -> ReportOut:
         longitude=row["longitude"],
         status=row["status"],
         vulnerable_person=row.get("vulnerable_person", False),
+        media_urls=row.get("media_urls") or [],
         vouch_count=row.get("vouch_count", 0),
         helpful_count=row.get("helpful_count", 0),
+        confidence_score=row.get("confidence_score"),
         distance_km=row.get("distance_km"),
         current_user_vouched=vouched,
         current_user_helpful=helpful,
@@ -43,6 +60,34 @@ def _to_out(row: dict, current_user_id: str | None = None) -> ReportOut:
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
+
+
+@router.post("/media/upload", response_model=ReportMediaUploadOut, status_code=status.HTTP_201_CREATED)
+async def upload_report_media(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: UserOut = Depends(get_current_user),
+) -> ReportMediaUploadOut:
+    if file.content_type not in _ALLOWED_MEDIA:
+        raise HTTPException(status_code=415, detail="Unsupported media type")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 25MB)")
+
+    _MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = Path(file.filename or "upload").suffix or (
+        ".jpg" if (file.content_type or "").startswith("image/") else ".mp4"
+    )
+    safe_name = f"{current_user.id}_{uuid.uuid4().hex}{suffix}"
+    out_path = _MEDIA_DIR / safe_name
+    out_path.write_bytes(data)
+
+    media_url = f"{request.base_url}uploads/reports/{safe_name}"
+    media_type = "video" if (file.content_type or "").startswith("video/") else "image"
+    return ReportMediaUploadOut(url=media_url, media_type=media_type)
 
 
 @router.post("/submit", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
@@ -58,8 +103,49 @@ async def submit_report(
         latitude=body.latitude,
         longitude=body.longitude,
         vulnerable_person=body.vulnerable_person,
+        media_urls=body.media_urls,
     )
+
+    # ── AI credibility scoring ────────────────────────────────────────────
+    try:
+        from ai_models.services.inference import score_report
+        ai_result = score_report(
+            vouch_count=0,
+            description_length=len(body.description),
+            has_precise_coords=True,
+            report_age_hours=0.0,
+            reporter_total_reports=report_db.count_user_reports(current_user.id),
+            proximity_to_risk_zone_km=_nearest_risk_zone_distance(
+                body.latitude, body.longitude,
+            ),
+        )
+        report_db.update_confidence_score(
+            row["id"], ai_result["confidence_score"],
+        )
+        row["confidence_score"] = ai_result["confidence_score"]
+        logger.info(
+            "Report %s AI confidence=%.2f credible=%s",
+            row["id"], ai_result["confidence_score"], ai_result["is_credible"],
+        )
+    except Exception as exc:
+        logger.warning("AI scoring failed for report %s: %s", row["id"], exc)
+
     return _to_out(row, current_user.id)
+
+
+def _nearest_risk_zone_distance(lat: float, lon: float) -> float:
+    """Best-effort distance to nearest risk zone. Returns 50 km if unknown."""
+    try:
+        from app.db.risk_zones import get_all_risk_zones
+        from app.core.geo import haversine
+        zones = get_all_risk_zones()
+        if not zones:
+            return 50.0
+        return min(
+            haversine(lat, lon, z["latitude"], z["longitude"]) for z in zones
+        )
+    except Exception:
+        return 50.0
 
 
 @router.get("/nearby/list", response_model=ReportList)
@@ -87,7 +173,7 @@ async def get_nearby_reports(
 
 
 @router.post("/{report_id}/upload-media")
-async def upload_report_media(
+async def upload_report_media_supabase(
     report_id: str,
     file: UploadFile = File(...),
     current_user: UserOut = Depends(get_current_user),
@@ -107,7 +193,7 @@ async def upload_report_media(
     from app.db.supabase_client import get_storage_client
     sb = get_storage_client()
     ext = (file.filename or "photo.jpg").rsplit(".", 1)[-1].lower()
-    path = f"{report_id}/{uuid_module.uuid4()}.{ext}"
+    path = f"{report_id}/{uuid.uuid4()}.{ext}"
     content = await file.read()
 
     try:

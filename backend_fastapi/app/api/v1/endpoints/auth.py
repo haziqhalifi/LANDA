@@ -1,9 +1,10 @@
 """Authentication endpoints: sign-up, sign-in, and /me (current user)."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from supabase_auth.errors import AuthApiError
 
 from app.api.v1.dependencies import get_current_user
-from app.db.supabase_client import get_auth_client
+from app.db.supabase_client import get_auth_client, get_client
 from app.db import users as user_db
 from app.schemas.user import Token, UserOut, UserSignIn, UserSignUp
 
@@ -25,7 +26,8 @@ async def signup(body: UserSignUp) -> Token:
     - **email**: must be a valid, unique email address
     - **password**: minimum 6 characters (managed by Supabase Auth)
     """
-    sb = get_auth_client()
+    sb = get_client()
+    auth_sb = get_auth_client()
 
     # Uniqueness checks
     if user_db.get_user_by_email(body.email):
@@ -87,9 +89,14 @@ async def signup(body: UserSignUp) -> Token:
 
     # Issue access token by signing in with the just-created credentials
     try:
-        sign_in = sb.auth.sign_in_with_password(
+        sign_in = auth_sb.auth.sign_in_with_password(
             {"email": str(body.email).lower(), "password": body.password}
         )
+    except AuthApiError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Account created but automatic sign-in failed: {str(exc)}",
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -121,16 +128,50 @@ async def signin(body: UserSignIn) -> Token:
     - **email**: the registered email address
     - **password**: the account password
     """
-    sb = get_auth_client()
+    sb = get_client()
+    auth_sb = get_auth_client()
     try:
-        sign_in = sb.auth.sign_in_with_password(
+        sign_in = auth_sb.auth.sign_in_with_password(
             {"email": str(body.email).lower(), "password": body.password}
         )
-    except Exception as exc:
+    except AuthApiError as exc:
+        msg = str(exc).lower()
+        if (
+            "invalid login credentials" in msg
+            or "email not confirmed" in msg
+            or "invalid email or password" in msg
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password.",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from exc
+        if "invalid api key" in msg or "jwt" in msg or "permission" in msg:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Authentication service error: Supabase auth key/config is invalid.",
+            ) from exc
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password.",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Authentication service error: {str(exc)}",
+        ) from exc
+    except Exception as exc:
+        msg = str(exc).lower()
+        # Wrong credentials should be surfaced as 401.
+        if (
+            "invalid login credentials" in msg
+            or "email not confirmed" in msg
+            or "invalid email or password" in msg
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password.",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from exc
+        # Configuration/upstream auth errors should not be masked as credential failures.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Authentication service error. Check Supabase URL/API key configuration.",
         ) from exc
 
     auth_user = sign_in.user
