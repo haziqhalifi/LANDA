@@ -1,5 +1,4 @@
 import 'package:disaster_resilience_ai/services/api_service.dart';
-import 'package:disaster_resilience_ai/ui/widgets/landa_wordmark.dart';
 import 'package:disaster_resilience_ai/ui/home_page.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -280,15 +279,6 @@ class _AuthPageState extends State<AuthPage> {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: bg,
-        elevation: 0,
-        centerTitle: true,
-        title: LandaBrandTitle(
-          wordmarkSize: 25,
-          iconColor: const Color(0xFF2D5927),
-        ),
-      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
