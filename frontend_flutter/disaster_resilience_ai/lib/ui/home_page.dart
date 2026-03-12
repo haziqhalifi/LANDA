@@ -216,6 +216,10 @@ class _HomePageState extends State<HomePage> {
         );
       }
     };
+    // Refresh warning cards on every poll so resolved warnings disappear
+    notif.onPollComplete = () {
+      if (mounted) _fetchWarnings();
+    };
     notif.startPolling(
       accessToken: widget.accessToken,
       latitude: _userLat,
@@ -1316,12 +1320,18 @@ class _HomePageState extends State<HomePage> {
             source: warning.source,
             meta: '${_timeAgo(warning.createdAt)} • $_locationLabel',
             message: warning.description,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => EmergencyAlertPage(warning: warning),
-              ),
-            ),
+            onTap: () {
+              final isHigh = warning.alertLevel == AlertLevel.warning ||
+                  warning.alertLevel == AlertLevel.evacuate;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => isHigh
+                      ? IncomingAlertPage(warning: warning)
+                      : EmergencyAlertPage(warning: warning),
+                ),
+              );
+            },
           ),
         ),
         ...news.map(

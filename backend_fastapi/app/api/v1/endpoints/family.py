@@ -215,11 +215,13 @@ async def self_checkin(
         if body.member_id:
             member = family_db.get_family_member(body.member_id)
         if not member:
-            raise HTTPException(
-                status_code=404,
-                detail="No family member record found for your phone number. "
-                       "Ask your family group leader to add your phone number.",
-            )
+            # User is not in a family group — acknowledge gracefully
+            return {
+                "member_id": None,
+                "safety_status": body.status.value,
+                "last_updated": None,
+                "note": "Status noted. You are not linked to a family group yet.",
+            }
 
     updated = family_db.update_member_status(member["id"], safety_status=body.status.value)
 

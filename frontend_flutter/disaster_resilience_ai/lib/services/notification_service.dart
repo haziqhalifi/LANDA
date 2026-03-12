@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ class NotificationService {
   static final NotificationService instance = NotificationService._();
 
   static const _lastCheckKey = 'notification_last_check';
+  static const _dismissedKey = 'notification_dismissed_ids';
   static const _pollInterval = Duration(seconds: 30);
 
   final FlutterLocalNotificationsPlugin _plugin =
@@ -39,6 +41,10 @@ class NotificationService {
   /// If set, it takes priority over the default notification for
   /// warning / evacuate level alerts.
   void Function(Warning warning)? onEmergencyAlert;
+
+  /// Called after every poll cycle — use to refresh the warning list UI
+  /// so resolved/deactivated warnings disappear automatically.
+  void Function()? onPollComplete;
 
   /// Cached list of warnings shown in the latest poll (for tap lookup).
   List<Warning> _recentWarnings = [];
@@ -95,6 +101,18 @@ class NotificationService {
     _timer = null;
   }
 
+  /// Mark a warning as dismissed so it is never shown again in this session.
+  Future<void> dismissWarning(String warningId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final ids = prefs.getStringList(_dismissedKey) ?? [];
+    if (!ids.contains(warningId)) {
+      ids.add(warningId);
+      // Keep at most 100 dismissed IDs to avoid unbounded growth
+      if (ids.length > 100) ids.removeRange(0, ids.length - 100);
+      await prefs.setStringList(_dismissedKey, ids);
+    }
+  }
+
   // ── Internal ──────────────────────────────────────────────────────────────
 
   Future<void> _checkForNewWarnings() async {
@@ -127,9 +145,15 @@ class NotificationService {
         return;
       }
 
-      _recentWarnings = warningList.warnings;
+      // Filter out warnings the user has already dismissed
+      final dismissedIds = prefs.getStringList(_dismissedKey) ?? [];
+      final newWarnings = warningList.warnings
+          .where((w) => !dismissedIds.contains(w.id))
+          .toList();
 
-      for (final warning in warningList.warnings) {
+      _recentWarnings = newWarnings;
+
+      for (final warning in newWarnings) {
         final isHighSeverity =
             warning.alertLevel == AlertLevel.warning ||
             warning.alertLevel == AlertLevel.evacuate;
@@ -139,7 +163,7 @@ class NotificationService {
           onEmergencyAlert!(warning);
         }
         // Always also post a system notification (visible in tray)
-        await _showNotification(warning);
+        if (!kIsWeb) await _showNotification(warning);
       }
 
       // Persist the current time as last-checked.
@@ -149,6 +173,9 @@ class NotificationService {
       );
     } catch (e) {
       debugPrint('NotificationService poll error: $e');
+    } finally {
+      // Always refresh the home page warning list — catches deactivations too
+      onPollComplete?.call();
     }
   }
 
@@ -186,8 +213,8 @@ class NotificationService {
         isEmergency = false;
     }
 
-    // Long vibration pattern for emergencies:  wait-vib-wait-vib-wait-vib
-    final vibrationPattern = isEmergency
+    // Long vibration pattern for emergencies (not supported on web)
+    final vibrationPattern = (isEmergency && !kIsWeb)
         ? Int64List.fromList([0, 1000, 500, 1000, 500, 1000])
         : null;
 

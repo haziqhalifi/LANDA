@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:disaster_resilience_ai/models/warning_model.dart';
+import 'package:disaster_resilience_ai/services/api_service.dart';
+import 'package:disaster_resilience_ai/services/notification_service.dart';
 import 'package:disaster_resilience_ai/ui/emergency_alert_page.dart';
 
 /// Full-screen incoming emergency alert — resembles an incoming phone call.
@@ -36,6 +39,11 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
   Timer? _vibrationTimer;
   Timer? _ringTimer;
   Timer? _dismissCountdownTimer;
+
+  // Check-in state
+  bool _checkinSubmitting = false;
+  String? _checkinStatus; // 'safe' | 'needs_help' | null
+  final ApiService _api = ApiService();
 
   @override
   void initState() {
@@ -146,7 +154,49 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
   void _dismiss() {
     if (_dismissCountdown > 0) return;
     _stopAlertEffects();
+    NotificationService.instance.dismissWarning(widget.warning.id);
     Navigator.of(context).pop();
+  }
+
+  Future<void> _submitCheckin(String status) async {
+    if (_checkinSubmitting || _checkinStatus != null) return;
+    setState(() => _checkinSubmitting = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_access_token') ?? '';
+      if (token.isNotEmpty) {
+        await _api.selfCheckin(accessToken: token, status: status);
+      }
+      if (!mounted) return;
+      setState(() => _checkinStatus = status);
+
+      if (status == 'safe') {
+        // Confirmed safe → stop alarm and auto-dismiss after brief confirmation
+        _stopAlertEffects();
+        NotificationService.instance.dismissWarning(widget.warning.id);
+        await Future.delayed(const Duration(milliseconds: 1500));
+        if (mounted) Navigator.of(context).pop();
+      } else {
+        // Needs help → stop alarm, go to EmergencyAlertPage for evacuation route
+        _stopAlertEffects();
+        NotificationService.instance.dismissWarning(widget.warning.id);
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => EmergencyAlertPage(warning: widget.warning),
+            ),
+          );
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update status — check your connection.')),
+        );
+        setState(() => _checkinSubmitting = false);
+      }
+    }
   }
 
   // ── UI ──────────────────────────────────────────────────────────────────
@@ -179,41 +229,45 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
           child: SafeArea(
             child: Column(
               children: [
-                const SizedBox(height: 32),
+                const SizedBox(height: 16),
                 // ── Alert level badge ──
                 _buildAlertBadge(warning),
-                const SizedBox(height: 28),
+                const SizedBox(height: 16),
                 // ── Pulsating icon ──
                 _buildPulsingIcon(warning),
-                const SizedBox(height: 28),
+                const SizedBox(height: 16),
                 // ── Title ──
                 Text(
                   isEvacuate ? 'EVACUATE NOW' : 'EMERGENCY ALERT',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 28,
+                    fontSize: 22,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 2.0,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 32),
                   child: Text(
                     warning.title,
                     textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 20,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
-                const Spacer(),
-                // ── Slide-up detail card ──
-                SlideTransition(
-                  position: _slideAnimation,
-                  child: _buildDetailCard(warning),
+                const SizedBox(height: 8),
+                // ── Slide-up detail card fills remaining space ──
+                Expanded(
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: _buildDetailCard(warning),
+                  ),
                 ),
               ],
             ),
@@ -273,8 +327,8 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
         return Transform.scale(
           scale: _pulseAnimation.value,
           child: Container(
-            width: 130,
-            height: 130,
+            width: 90,
+            height: 90,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.white.withAlpha(30),
@@ -282,12 +336,12 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withAlpha(60),
-                  blurRadius: 30,
-                  spreadRadius: 5,
+                  blurRadius: 20,
+                  spreadRadius: 3,
                 ),
               ],
             ),
-            child: Icon(icon, color: Colors.white, size: 60),
+            child: Icon(icon, color: Colors.white, size: 44),
           ),
         );
       },
@@ -297,8 +351,7 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
   Widget _buildDetailCard(Warning warning) {
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
@@ -310,9 +363,11 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
           ),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
           // ── Hazard type chip ──
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -417,6 +472,100 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
             ],
           ),
           const SizedBox(height: 20),
+          // ── Are you safe? check-in ──
+          if (_checkinStatus == null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange[200]!),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'Are you safe?',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Colors.orange[900],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _checkinSubmitting ? null : () => _submitCheckin('safe'),
+                          icon: const Icon(Icons.check_circle_outline, size: 18),
+                          label: const Text("I'M SAFE"),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green[600],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _checkinSubmitting ? null : () => _submitCheckin('needs_help'),
+                          icon: const Icon(Icons.sos, size: 18),
+                          label: const Text('NEED HELP'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red[700],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                color: _checkinStatus == 'safe' ? Colors.green[50] : Colors.red[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _checkinStatus == 'safe' ? Colors.green[300]! : Colors.red[300]!,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _checkinStatus == 'safe' ? Icons.check_circle : Icons.sos,
+                    color: _checkinStatus == 'safe' ? Colors.green[700] : Colors.red[700],
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _checkinStatus == 'safe' ? 'You reported: SAFE' : 'You reported: NEED HELP',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: _checkinStatus == 'safe' ? Colors.green[800] : Colors.red[800],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
           // ── Action buttons ──
           Row(
             children: [
@@ -474,6 +623,7 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
             ],
           ),
         ],
+      ),
       ),
     );
   }

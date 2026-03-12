@@ -34,6 +34,13 @@ VONAGE_API_SECRET:    str = os.getenv("VONAGE_API_SECRET", "")
 # EasySendSMS
 EASYSENDSMS_USERNAME: str = os.getenv("EASYSENDSMS_USERNAME", "")
 EASYSENDSMS_PASSWORD: str = os.getenv("EASYSENDSMS_PASSWORD", "")
+EASYSENDSMS_API_KEY:  str = os.getenv("EASYSENDSMS_API_KEY", "")
+
+# ── Demo / Testing override ───────────────────────────────────────────────────
+# When set, ALL outgoing SMS is redirected to this single number regardless of
+# who is actually in the affected area. Use for local demo testing only.
+# Format: E.164 without '+', e.g. 60175815030 for Malaysian number 0175815030
+DEMO_PHONE: str = os.getenv("DEMO_PHONE", "")
 
 # ── Anthropic / Claude AI ─────────────────────────────────────────────────────
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")

@@ -80,6 +80,21 @@ def broadcast_warning(warning: WarningRecord) -> BroadcastResult:
         else:
             logger.warning("User %s in zone but has no push/SMS channel.", device["user_id"])
 
+    # Demo fallback: if DEMO_PHONE is set and no SMS was sent, fire one test SMS.
+    from app.core.config import DEMO_PHONE as _DEMO_PHONE
+    if _DEMO_PHONE and result.sms_sent == 0:
+        from app.services.sms_service import send_government_alert
+        sent = send_government_alert(
+            phone_number=_DEMO_PHONE,
+            user_id=None,
+            area=warning.get("title", "Active Warning"),
+            severity=warning.get("alert_level", "warning"),
+            event_id=f"demo-{warning['id']}",
+        )
+        if sent:
+            result.sms_sent += 1
+            result.total_affected += 1
+
     # Trigger IoT sirens for high-severity warnings
     if warning.get("alert_level") in ("warning", "evacuate"):
         try:
@@ -181,6 +196,24 @@ async def broadcast_flood_report(report: dict) -> dict:
         else:
             logger.warning("User %s near flood but has no notification channel", device["user_id"])
 
+    # Demo fallback: if DEMO_PHONE is set and no SMS was sent (no users in range),
+    # send one test SMS directly to the demo number so the demo always shows real output.
+    from app.core.config import DEMO_PHONE as _DEMO_PHONE
+    if _DEMO_PHONE and sms_sent == 0:
+        sent = send_flood_alert(
+            phone_number=_DEMO_PHONE,
+            user_id=None,
+            location_name=report.get("location_name", "nearby area"),
+            distance_km=0.0,
+            shelter_name="",
+            shelter_phone="",
+            shelter_distance_km=None,
+            event_id=f"demo-{event_id}",
+        )
+        if sent:
+            sms_sent += 1
+            total += 1
+
     logger.info("Flood report %s broadcast: %d affected, %d push, %d SMS", report["id"], total, push_sent, sms_sent)
     return {"total_affected": total, "push_sent": push_sent, "sms_sent": sms_sent}
 
@@ -235,6 +268,21 @@ async def broadcast_report_alert(report: dict) -> dict:
                 sms_sent += 1
         else:
             logger.warning("User %s near incident but has no notification channel", device["user_id"])
+
+    # Demo fallback: if DEMO_PHONE is set and no SMS was sent, fire one test SMS.
+    from app.core.config import DEMO_PHONE as _DEMO_PHONE
+    if _DEMO_PHONE and sms_sent == 0:
+        sent = send_emergency_alert(
+            phone_number=_DEMO_PHONE,
+            user_id=None,
+            report_type=report_type,
+            location_name=location,
+            distance_km=0.0,
+            event_id=f"demo-{event_id}",
+        )
+        if sent:
+            sms_sent += 1
+            total += 1
 
     logger.info("Report %s (%s) broadcast: %d affected, %d push, %d SMS", event_id, report_type, total, push_sent, sms_sent)
     return {"total_affected": total, "push_sent": push_sent, "sms_sent": sms_sent}

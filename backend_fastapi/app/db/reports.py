@@ -353,6 +353,20 @@ def get_validated_flood_reports_since(minutes: int = 2) -> list[ReportRecord]:
     return res.data or []
 
 
+def get_validated_reports_since(minutes: int = 2) -> list[ReportRecord]:
+    """Return ALL validated reports (any type) from the last N minutes (for SMS scheduler)."""
+    sb = get_client()
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+    res = (
+        sb.table("reports")
+        .select("*")
+        .eq("status", "validated")
+        .gte("updated_at", cutoff)
+        .execute()
+    )
+    return res.data or []
+
+
 # ── AI scoring helpers ──────────────────────────────────────────────────────
 
 def count_user_reports(user_id: str) -> int:

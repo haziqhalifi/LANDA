@@ -16,7 +16,8 @@ from app.core.config import (
     SMS_PROVIDER,
     MOCEAN_API_KEY, MOCEAN_API_SECRET,
     VONAGE_API_KEY, VONAGE_API_SECRET,
-    EASYSENDSMS_USERNAME, EASYSENDSMS_PASSWORD,
+    EASYSENDSMS_USERNAME, EASYSENDSMS_PASSWORD, EASYSENDSMS_API_KEY,
+    DEMO_PHONE,
 )
 from app.db.supabase_client import get_client
 
@@ -50,7 +51,7 @@ def _print_preview(alert_type: str, to_number: str, body: str) -> None:
 
 def _is_configured() -> bool:
     if SMS_PROVIDER == "mocean":
-        return bool(MOCEAN_API_KEY and MOCEAN_API_SECRET)
+        return bool(MOCEAN_API_KEY)  # token-only auth is sufficient
     if SMS_PROVIDER == "vonage":
         return bool(VONAGE_API_KEY and VONAGE_API_SECRET)
     if SMS_PROVIDER == "easysendsms":
@@ -61,9 +62,15 @@ def _is_configured() -> bool:
 # ── Provider send functions ───────────────────────────────────────────────────
 
 def _send_mocean(phone_number: str, message: str) -> bool:
-    if not (MOCEAN_API_KEY and MOCEAN_API_SECRET):
+    if not MOCEAN_API_KEY:
         logger.warning("[MOCK-MOCEAN] Would send to %s: %s", phone_number, message[:80])
         return True
+
+    # Mocean API Token auth (apit-... token, no secret needed)
+    if MOCEAN_API_KEY.startswith("apit-") or not MOCEAN_API_SECRET:
+        return _send_mocean_token(phone_number, message)
+
+    # Fallback: legacy key+secret SDK auth
     try:
         from moceansdk import Client, Basic
         client = Client(Basic(MOCEAN_API_KEY, MOCEAN_API_SECRET))
@@ -80,6 +87,40 @@ def _send_mocean(phone_number: str, message: str) -> bool:
         return False
     except Exception as exc:
         logger.error("[Mocean] Send error to %s: %s", phone_number, exc)
+        return False
+
+
+def _send_mocean_token(phone_number: str, message: str) -> bool:
+    """Send SMS via Mocean REST API using Bearer token auth."""
+    try:
+        import httpx
+        resp = httpx.post(
+            "https://rest.moceanapi.com/rest/2/sms",
+            json={
+                "mocean-from": "LANDA",
+                "mocean-to":   phone_number,
+                "mocean-text": message,
+            },
+            headers={
+                "Authorization": f"Bearer {MOCEAN_API_KEY}",
+                "Content-Type":  "application/json",
+                "Accept":        "application/json",
+            },
+            timeout=15.0,
+        )
+        data = resp.json() if resp.content else {}
+        messages = data.get("messages", [])
+        if messages and str(messages[0].get("status", "1")) == "0":
+            logger.info("[Mocean-Token] SMS sent to %s", phone_number)
+            return True
+        # Some Mocean responses use a top-level status
+        if str(data.get("status", "1")) == "0" or resp.status_code == 200:
+            logger.info("[Mocean-Token] SMS sent to %s (HTTP %d)", phone_number, resp.status_code)
+            return True
+        logger.error("[Mocean-Token] Send failed HTTP %d: %s", resp.status_code, resp.text[:200])
+        return False
+    except Exception as exc:
+        logger.error("[Mocean-Token] Send error to %s: %s", phone_number, exc)
         return False
 
 
@@ -109,31 +150,39 @@ def _send_vonage(phone_number: str, message: str) -> bool:
 
 
 def _send_easysendsms(phone_number: str, message: str) -> bool:
-    if not (EASYSENDSMS_USERNAME and EASYSENDSMS_PASSWORD):
+    if not (EASYSENDSMS_USERNAME and EASYSENDSMS_PASSWORD) and not EASYSENDSMS_API_KEY:
         logger.warning("[MOCK-EASYSENDSMS] Would send to %s: %s", phone_number, message[:80])
         return True
     try:
         import httpx
         # EasySendSMS expects number without '+' prefix
         to = phone_number.lstrip("+")
+        payload: dict = {
+            "msisdn":   to,
+            "message":  message,
+            "sender":   "LANDA",
+            "type":     "0",
+            "dlr":      "1",
+        }
+        if EASYSENDSMS_API_KEY:
+            # API key auth (preferred)
+            payload["api_key"] = EASYSENDSMS_API_KEY
+        else:
+            # Username/password auth fallback
+            payload["username"] = EASYSENDSMS_USERNAME
+            payload["password"] = EASYSENDSMS_PASSWORD
+
         resp = httpx.post(
-            "https://www.easysendsms.app/bulksms",
-            data={
-                "username":   EASYSENDSMS_USERNAME,
-                "password":   EASYSENDSMS_PASSWORD,
-                "msisdn":     to,
-                "message":    message,
-                "sender":     "LANDA",
-                "type":       "0",
-                "dlr":        "1",
-            },
+            "https://api.easysendsms.app/bulksms",
+            data=payload,
             timeout=10.0,
         )
         body = resp.text.strip()
-        if resp.status_code == 200 and "OK" in body.upper():
+        # EasySendSMS returns "OK" or a numeric status code (0 = success)
+        if resp.status_code == 200 and (body.upper().startswith("OK") or body == "0"):
             logger.info("[EasySendSMS] SMS sent to %s", phone_number)
             return True
-        logger.error("[EasySendSMS] Send failed: %s", body)
+        logger.error("[EasySendSMS] Send failed (HTTP %d): %s", resp.status_code, body)
         return False
     except Exception as exc:
         logger.error("[EasySendSMS] Send error to %s: %s", phone_number, exc)
@@ -143,12 +192,14 @@ def _send_easysendsms(phone_number: str, message: str) -> bool:
 # ── Router ────────────────────────────────────────────────────────────────────
 
 def _route(phone_number: str, message: str) -> bool:
+    # Demo override: redirect all SMS to the single test number when DEMO_PHONE is set
+    dest = DEMO_PHONE if DEMO_PHONE else phone_number
     if SMS_PROVIDER == "mocean":
-        return _send_mocean(phone_number, message)
+        return _send_mocean(dest, message)
     if SMS_PROVIDER == "vonage":
-        return _send_vonage(phone_number, message)
+        return _send_vonage(dest, message)
     if SMS_PROVIDER == "easysendsms":
-        return _send_easysendsms(phone_number, message)
+        return _send_easysendsms(dest, message)
     logger.warning("SMS_PROVIDER '%s' not recognised — message not sent", SMS_PROVIDER)
     return False
 
@@ -172,10 +223,12 @@ def _already_sent(*, user_id: str, event_id: str) -> bool:
 
 
 def _log_alert(
-    *, user_id: str, phone_number: str, event_id: str,
+    *, user_id: str | None, phone_number: str, event_id: str,
     message_body: str, status: str, error_reason: str | None = None,
     alert_type: str = "flood",
 ) -> None:
+    if not user_id:
+        return  # Skip DB logging for demo/anonymous sends (no FK target)
     try:
         sb = get_client()
         sb.table("sms_alerts").insert({
@@ -198,7 +251,7 @@ def _log_alert(
 def send_flood_alert(
     *,
     phone_number: str,
-    user_id: str,
+    user_id: str | None,
     location_name: str,
     distance_km: float,
     event_id: str,
@@ -208,24 +261,14 @@ def send_flood_alert(
 ) -> bool:
     if not phone_number:
         return False
-    if _already_sent(user_id=user_id, event_id=event_id):
+    if user_id and _already_sent(user_id=user_id, event_id=event_id):
         logger.info("Dedup: already sent flood alert to user %s for event %s", user_id, event_id)
         return False
 
-    shelter_info = ""
-    if shelter_name:
-        shelter_info = f"\nNearest shelter: {shelter_name}"
-        if shelter_distance_km:
-            shelter_info += f" ({shelter_distance_km:.1f}km)"
-        if shelter_phone:
-            shelter_info += f" | {shelter_phone}"
-
+    shelter_info = f" Shelter: {shelter_name}" if shelter_name else ""
     message = (
-        f"FLOOD ALERT - LANDA App\n\n"
-        f"Flood confirmed at {location_name} ({distance_km:.1f}km from you)."
-        f"{shelter_info}\n\n"
-        f"Reply SAFE or DANGER to update your status.\n"
-        f"Stay away from floodwater. Move to higher ground now."
+        f"[LANDA] Flood reported near {location_name} ({distance_km:.1f}km away)."
+        f"{shelter_info} Stay safe & move to higher ground."
     )
 
     _print_preview("FLOOD ALERT", phone_number, message)
@@ -242,7 +285,7 @@ def send_flood_alert(
 def send_emergency_alert(
     *,
     phone_number: str,
-    user_id: str,
+    user_id: str | None,
     report_type: str,
     location_name: str,
     distance_km: float,
@@ -250,16 +293,13 @@ def send_emergency_alert(
 ) -> bool:
     if not phone_number:
         return False
-    if _already_sent(user_id=user_id, event_id=event_id):
+    if user_id and _already_sent(user_id=user_id, event_id=event_id):
         logger.info("Dedup: already sent emergency alert to user %s for event %s", user_id, event_id)
         return False
 
     type_label = _TYPE_LABELS.get(report_type, report_type.replace("_", " ").title())
     message = (
-        f"EMERGENCY ALERT - LANDA App\n\n"
-        f"{type_label} reported at {location_name} ({distance_km:.1f}km from you).\n\n"
-        f"Stay safe. Follow local authority instructions.\n\n"
-        f"Reply SAFE or DANGER to update your status."
+        f"[LANDA] {type_label} reported near {location_name} ({distance_km:.1f}km away). Stay safe."
     )
 
     _print_preview(f"EMERGENCY - {type_label}", phone_number, message)
@@ -276,22 +316,18 @@ def send_emergency_alert(
 def send_government_alert(
     *,
     phone_number: str,
-    user_id: str,
+    user_id: str | None,
     area: str,
     severity: str,
     event_id: str,
 ) -> bool:
     if not phone_number:
         return False
-    if _already_sent(user_id=user_id, event_id=event_id):
+    if user_id and _already_sent(user_id=user_id, event_id=event_id):
         return False
 
     message = (
-        f"GOVERNMENT FLOOD WARNING\n\n"
-        f"Area: {area}\n"
-        f"Severity: {severity}\n\n"
-        f"Reply SAFE or DANGER to update your status.\n"
-        f"Source: MetMalaysia"
+        f"[LANDA] {severity.title()} warning for {area}. Stay alert & follow local authority instructions."
     )
 
     _print_preview("GOV WARNING", phone_number, message)
