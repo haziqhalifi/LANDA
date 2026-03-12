@@ -145,19 +145,36 @@ def _nearest_risk_zone_distance(lat: float, lon: float) -> float:
         return 50.0
 
 
-@router.get("/nearby/list", response_model=ReportList)
-async def get_nearby_reports(
-    latitude:    float = Query(..., ge=-90,  le=90),
-    longitude:   float = Query(..., ge=-180, le=180),
-    radius_km:   float = Query(default=10.0, gt=0, le=100),
-    report_type: str   = Query(default=None),
-    limit:       int   = Query(default=50, ge=1, le=200),
-    offset:      int   = Query(default=0,  ge=0),
+@router.get("/my", response_model=ReportList)
+async def get_my_reports(
+    limit:  int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0,  ge=0),
     current_user: UserOut = Depends(get_current_user),
 ) -> ReportList:
+    rows = report_db.get_my_reports(
+        user_id=current_user.id,
+        limit=limit,
+        offset=offset,
+    )
+    return ReportList(reports=[_to_out(r, current_user.id) for r in rows], total=len(rows))
+
+
+@router.get("/nearby/list", response_model=ReportList)
+async def get_nearby_reports(
+    latitude:      float = Query(..., ge=-90,  le=90),
+    longitude:     float = Query(..., ge=-180, le=180),
+    radius_km:     float = Query(default=10.0, gt=0, le=100),
+    report_type:   str   = Query(default=None),
+    status_filter: str   = Query(default=None, description="Comma-separated statuses, e.g. 'validated' or 'validated,verified'"),
+    limit:         int   = Query(default=50, ge=1, le=200),
+    offset:        int   = Query(default=0,  ge=0),
+    current_user: UserOut = Depends(get_current_user),
+) -> ReportList:
+    status_list = [s.strip() for s in status_filter.split(",")] if status_filter else None
     rows = report_db.get_nearby_reports(
         latitude=latitude, longitude=longitude,
         radius_km=radius_km, report_type=report_type,
+        status_filter=status_list,
         limit=limit, offset=offset,
     )
     return ReportList(reports=[_to_out(r, current_user.id) for r in rows], total=len(rows))

@@ -1,14 +1,20 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import 'package:disaster_resilience_ai/l10n/app_localizations.dart';
 import 'package:disaster_resilience_ai/models/risk_map_model.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
+import 'package:disaster_resilience_ai/ui/submit_report_page.dart';
 
 class MapTab extends StatefulWidget {
-  const MapTab({super.key});
+  const MapTab({super.key, this.accessToken = ''});
+
+  final String accessToken;
 
   @override
   State<MapTab> createState() => _MapTabState();
@@ -25,8 +31,15 @@ class _MapTabState extends State<MapTab> {
   LatLng? _userLocation;
   bool _locatingUser = false;
 
-  // Filter (only two supported hazard types)
-  String _hazardFilter = 'flood';
+  // Filter ('all', 'flood', 'landslide')
+  String _hazardFilter = 'all';
+
+  // ── Search ────────────────────────────────────────────────────────────────
+  final TextEditingController _searchController = TextEditingController();
+  bool _searching = false;
+
+  // ── Community reports state ───────────────────────────────────────────────
+  List<Map<String, dynamic>> _reports = [];
 
   // Default centre: Kuantan, Pahang
   final LatLng _defaultCentre = const LatLng(3.8077, 103.3260);
@@ -38,9 +51,31 @@ class _MapTabState extends State<MapTab> {
     _getUserLocation();
   }
 
+  Future<void> _loadReports() async {
+    if (widget.accessToken.isEmpty) return;
+    try {
+      final payload = await _api.fetchNearbyReports(
+        accessToken: widget.accessToken,
+        latitude: _userLocation?.latitude ?? _defaultCentre.latitude,
+        longitude: _userLocation?.longitude ?? _defaultCentre.longitude,
+        radiusKm: 100,
+      );
+      final rows = (payload['reports'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .where(
+            (r) =>
+                (r['latitude'] as num?) != null &&
+                (r['longitude'] as num?) != null,
+          )
+          .toList();
+      if (mounted) setState(() => _reports = rows);
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _mapController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -49,7 +84,9 @@ class _MapTabState extends State<MapTab> {
       _loadingMap = true;
     });
     try {
-      final json = await _api.fetchMapData(hazardType: _hazardFilter);
+      final json = await _api.fetchMapData(
+        hazardType: _hazardFilter == 'all' ? null : _hazardFilter,
+      );
       if (mounted) {
         setState(() {
           _mapData = MapData.fromJson(json);
@@ -73,7 +110,12 @@ class _MapTabState extends State<MapTab> {
         await Geolocator.requestPermission();
       }
 
-      final pos = await Geolocator.getCurrentPosition();
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
       if (mounted) {
         setState(() {
           _userLocation = LatLng(pos.latitude, pos.longitude);
@@ -81,6 +123,7 @@ class _MapTabState extends State<MapTab> {
         });
         _mapController.move(_userLocation!, 13.0);
       }
+      await _loadReports();
     } catch (_) {
       // Fallback to default
       if (mounted) {
@@ -89,6 +132,7 @@ class _MapTabState extends State<MapTab> {
           _locatingUser = false;
         });
       }
+      await _loadReports();
     }
   }
 
@@ -169,28 +213,32 @@ class _MapTabState extends State<MapTab> {
         markers.add(
           Marker(
             point: LatLng(zone.latitude, zone.longitude),
-            width: 16,
-            height: 16,
+            width: 44,
+            height: 44,
             child: GestureDetector(
               onTap: () => _showZoneInfo(zone),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: _hazardColor(zone.hazardType),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 1.2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(40),
-                      blurRadius: 3,
-                      offset: const Offset(0, 1),
+              child: Center(
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: _hazardColor(zone.hazardType),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(60),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      _hazardIcon(zone.hazardType),
+                      size: 12,
+                      color: Colors.white,
                     ),
-                  ],
-                ),
-                child: Center(
-                  child: Icon(
-                    _hazardIcon(zone.hazardType),
-                    size: 9,
-                    color: Colors.white,
                   ),
                 ),
               ),
@@ -200,26 +248,72 @@ class _MapTabState extends State<MapTab> {
       }
     }
 
+    // Community report markers
+    for (final report in _reports) {
+      final lat = (report['latitude'] as num).toDouble();
+      final lon = (report['longitude'] as num).toDouble();
+      final type = (report['report_type'] as String? ?? '').toLowerCase();
+      final color = _reportColor(type);
+      markers.add(
+        Marker(
+          point: LatLng(lat, lon),
+          width: 44,
+          height: 44,
+          child: GestureDetector(
+            onTap: () => _showReportInfo(report),
+            child: Center(
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(color: Colors.white, width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withAlpha(60),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(Icons.flag, size: 13, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     // User location marker
     if (_userLocation != null) {
       markers.add(
         Marker(
           point: _userLocation!,
-          width: 20,
-          height: 20,
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.blue.withAlpha(26),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: Colors.blue[700],
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 1.8),
+          width: 44,
+          height: 44,
+          child: Center(
+            child: Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: Colors.blue.withAlpha(50),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(color: Colors.blue.withAlpha(80), blurRadius: 6),
+                ],
+              ),
+              child: Center(
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.blue[700],
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
             ),
@@ -234,73 +328,198 @@ class _MapTabState extends State<MapTab> {
   // ── Top Controls ──────────────────────────────────────────────────────────
 
   Widget _buildTopControls() {
-    final l10n = AppLocalizations.of(context);
     return Positioned(
       top: 8,
       left: 12,
       right: 12,
       child: SafeArea(
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildFilterChip(l10n.mapFilterFlood, 'flood'),
-            _buildFilterChip(l10n.mapFilterLandslide, 'landslide'),
+            _buildSearchBar(),
+            const SizedBox(height: 8),
+            _buildHazardChips(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFilterChip(String label, String type) {
+  Widget _buildSearchBar() {
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final isSelected = _hazardFilter == type;
-    final selectedColor = _hazardColor(type);
-    final bgColor = isSelected
-        ? selectedColor
-        : (isDark ? theme.cardColor : Colors.white);
-    final textColor = isSelected
-        ? Colors.white
-        : (isDark ? scheme.onSurface.withAlpha(220) : Colors.grey[700]!);
+    final bgColor = isDark ? theme.cardColor : Colors.white;
     final borderColor = isDark
-        ? scheme.outline.withAlpha(170)
+        ? theme.colorScheme.outline.withAlpha(170)
         : const Color(0xFFE2E8F0);
+    final hintColor = isDark ? Colors.grey[400]! : Colors.grey[500]!;
     final shadowColor = isDark
         ? Colors.black.withAlpha(70)
         : Colors.black.withAlpha(20);
 
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.only(right: 6),
-        child: GestureDetector(
-          onTap: () {
-            if (_hazardFilter == type) return;
-            setState(() => _hazardFilter = type);
-            _loadMapData();
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isSelected ? selectedColor : borderColor,
-              ),
-              boxShadow: [BoxShadow(color: shadowColor, blurRadius: 4)],
-            ),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: textColor,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
-            ),
+    return Container(
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
+        boxShadow: [BoxShadow(color: shadowColor, blurRadius: 4)],
+      ),
+      child: TextField(
+        controller: _searchController,
+        onSubmitted: _searchLocation,
+        style: TextStyle(
+          color: isDark ? Colors.white : const Color(0xFF1E293B),
+          fontSize: 14,
+        ),
+        decoration: InputDecoration(
+          hintText: _tr(
+            en: 'Search location...',
+            id: 'Cari lokasi...',
+            ms: 'Cari lokasi...',
+            zh: '搜索地点...',
+          ),
+          hintStyle: TextStyle(color: hintColor, fontSize: 14),
+          prefixIcon: Icon(Icons.search, color: hintColor, size: 20),
+          suffixIcon: _searching
+              ? const Padding(
+                  padding: EdgeInsets.all(10),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : (_searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear, color: hintColor, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() {});
+                        },
+                      )
+                    : null),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 10,
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildHazardChips() {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final scheme = theme.colorScheme;
+
+    final options = [
+      ('all', l10n.mapFilterAll, Icons.layers_outlined, Colors.grey.shade600),
+      ('flood', l10n.mapFilterFlood, Icons.flood, const Color(0xFF1D4ED8)),
+      (
+        'landslide',
+        l10n.mapFilterLandslide,
+        Icons.terrain,
+        const Color(0xFFD97706),
+      ),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: options.map((o) {
+          final selected = _hazardFilter == o.$1;
+          final chipColor = o.$4;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilterChip(
+              selected: selected,
+              showCheckmark: false,
+              avatar: Icon(
+                o.$3,
+                size: 16,
+                color: selected ? Colors.white : chipColor,
+              ),
+              label: Text(
+                o.$2,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: selected
+                      ? Colors.white
+                      : (isDark ? scheme.onSurface : const Color(0xFF374151)),
+                ),
+              ),
+              backgroundColor: isDark ? theme.cardColor : Colors.white,
+              selectedColor: chipColor,
+              side: BorderSide(
+                color: selected
+                    ? chipColor
+                    : (isDark
+                          ? scheme.outline.withAlpha(170)
+                          : const Color(0xFFE2E8F0)),
+              ),
+              elevation: 2,
+              shadowColor: Colors.black.withAlpha(30),
+              onSelected: (_) {
+                if (_hazardFilter == o.$1) return;
+                setState(() => _hazardFilter = o.$1);
+                _loadMapData();
+              },
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Future<void> _searchLocation(String query) async {
+    if (query.trim().isEmpty) return;
+    setState(() => _searching = true);
+    try {
+      final uri = Uri.parse('https://nominatim.openstreetmap.org/search')
+          .replace(
+            queryParameters: {
+              'q': query.trim(),
+              'format': 'json',
+              'limit': '1',
+              'countrycodes': 'my',
+            },
+          );
+      final response = await http.get(
+        uri,
+        headers: {'User-Agent': 'DisasterResilienceAI/1.0'},
+      );
+      if (response.statusCode == 200) {
+        final results = jsonDecode(response.body) as List<dynamic>;
+        if (results.isNotEmpty) {
+          final lat = double.parse(results[0]['lat'] as String);
+          final lon = double.parse(results[0]['lon'] as String);
+          if (mounted) {
+            _mapController.move(LatLng(lat, lon), 13.0);
+            setState(() => _userLocation = LatLng(lat, lon));
+            _loadReports();
+          }
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                _tr(
+                  en: 'Location not found',
+                  id: 'Lokasi tidak ditemukan',
+                  ms: 'Lokasi tidak ditemui',
+                  zh: '未找到地点',
+                ),
+              ),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _searching = false);
   }
 
   // ── Legend ─────────────────────────────────────────────────────────────────
@@ -314,9 +533,7 @@ class _MapTabState extends State<MapTab> {
     final panelBorder = isDark
         ? scheme.outline.withAlpha(170)
         : const Color(0xFFE2E8F0);
-    final panelTitle = isDark
-        ? scheme.onSurface
-        : const Color(0xFF1E293B);
+    final panelTitle = isDark ? scheme.onSurface : const Color(0xFF1E293B);
     final shadowColor = isDark
         ? Colors.black.withAlpha(70)
         : Colors.black.withAlpha(26);
@@ -340,7 +557,7 @@ class _MapTabState extends State<MapTab> {
               l10n.mapLegendTitle,
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                fontSize: 11,
+                fontSize: 13,
                 letterSpacing: 1,
                 color: panelTitle,
               ),
@@ -360,6 +577,14 @@ class _MapTabState extends State<MapTab> {
                   ? scheme.onSurface.withAlpha(220)
                   : const Color(0xFF334155),
             ),
+            _buildLegendItem(
+              const Color(0xFF374151),
+              l10n.mapLegendCommunityReports,
+              textColor: isDark
+                  ? scheme.onSurface.withAlpha(220)
+                  : const Color(0xFF334155),
+              isSquare: true,
+            ),
           ],
         ),
       ),
@@ -370,6 +595,7 @@ class _MapTabState extends State<MapTab> {
     Color color,
     String label, {
     required Color textColor,
+    bool isSquare = false,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -380,10 +606,13 @@ class _MapTabState extends State<MapTab> {
             width: 12,
             height: 12,
             decoration: BoxDecoration(
-              color: color.withAlpha(128),
-              borderRadius: BorderRadius.circular(3),
+              color: isSquare ? color : color.withAlpha(128),
+              borderRadius: BorderRadius.circular(isSquare ? 2 : 3),
               border: Border.all(color: color, width: 1.5),
             ),
+            child: isSquare
+                ? const Icon(Icons.flag, size: 7, color: Colors.white)
+                : null,
           ),
           const SizedBox(width: 6),
           Text(
@@ -406,8 +635,12 @@ class _MapTabState extends State<MapTab> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
-    final overlayTextColor = isDark ? scheme.onSurface : const Color(0xFF1E293B);
-    final overlayBg = isDark ? Colors.black.withAlpha(120) : Colors.white.withAlpha(153);
+    final overlayTextColor = isDark
+        ? scheme.onSurface
+        : const Color(0xFF1E293B);
+    final overlayBg = isDark
+        ? Colors.black.withAlpha(120)
+        : Colors.white.withAlpha(153);
 
     return Container(
       color: overlayBg,
@@ -448,10 +681,40 @@ class _MapTabState extends State<MapTab> {
         mainAxisSize: MainAxisSize.min,
         children: [
           FloatingActionButton(
+            heroTag: 'report',
+            mini: false,
+            backgroundColor: const Color(0xFFDC2626),
+            foregroundColor: Colors.white,
+            tooltip: _tr(
+              en: 'Report incident',
+              id: 'Laporkan insiden',
+              ms: 'Laporkan insiden',
+              zh: '报告事件',
+            ),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      SubmitReportPage(accessToken: widget.accessToken),
+                ),
+              );
+              _loadReports();
+            },
+            child: const Icon(Icons.flag_rounded, color: Colors.white),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton(
             heroTag: 'locate',
             mini: true,
             backgroundColor: fabBg,
             foregroundColor: fabFg,
+            tooltip: _tr(
+              en: 'Locate me',
+              id: 'Temukan saya',
+              ms: 'Cari saya',
+              zh: '定位我',
+            ),
             onPressed: () async {
               await _getUserLocation();
               if (_userLocation != null) {
@@ -472,6 +735,12 @@ class _MapTabState extends State<MapTab> {
             mini: true,
             backgroundColor: fabBg,
             foregroundColor: fabFg,
+            tooltip: _tr(
+              en: 'Refresh map',
+              id: 'Muat ulang peta',
+              ms: 'Muat semula peta',
+              zh: '刷新地图',
+            ),
             onPressed: _loadMapData,
             child: Icon(Icons.refresh, color: fabFg),
           ),
@@ -535,7 +804,9 @@ class _MapTabState extends State<MapTab> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: isDark ? scheme.onSurface : const Color(0xFF1E293B),
+                          color: isDark
+                              ? scheme.onSurface
+                              : const Color(0xFF1E293B),
                         ),
                       ),
                       Text(
@@ -587,7 +858,9 @@ class _MapTabState extends State<MapTab> {
             Text(
               zone.description,
               style: TextStyle(
-                color: isDark ? scheme.onSurface.withAlpha(220) : Colors.grey[700],
+                color: isDark
+                    ? scheme.onSurface.withAlpha(220)
+                    : Colors.grey[700],
                 fontSize: 13,
                 height: 1.5,
               ),
@@ -598,13 +871,17 @@ class _MapTabState extends State<MapTab> {
                 Icon(
                   Icons.radar,
                   size: 16,
-                  color: isDark ? scheme.onSurface.withAlpha(170) : Colors.grey[500],
+                  color: isDark
+                      ? scheme.onSurface.withAlpha(170)
+                      : Colors.grey[500],
                 ),
                 const SizedBox(width: 4),
                 Text(
                   l10n.mapRadiusKm(zone.radiusKm.toString()),
                   style: TextStyle(
-                    color: isDark ? scheme.onSurface.withAlpha(180) : Colors.grey[600],
+                    color: isDark
+                        ? scheme.onSurface.withAlpha(180)
+                        : Colors.grey[600],
                     fontSize: 12,
                   ),
                 ),
@@ -612,13 +889,17 @@ class _MapTabState extends State<MapTab> {
                 Icon(
                   Icons.location_on,
                   size: 16,
-                  color: isDark ? scheme.onSurface.withAlpha(170) : Colors.grey[500],
+                  color: isDark
+                      ? scheme.onSurface.withAlpha(170)
+                      : Colors.grey[500],
                 ),
                 const SizedBox(width: 4),
                 Text(
                   '${zone.latitude.toStringAsFixed(4)}, ${zone.longitude.toStringAsFixed(4)}',
                   style: TextStyle(
-                    color: isDark ? scheme.onSurface.withAlpha(180) : Colors.grey[600],
+                    color: isDark
+                        ? scheme.onSurface.withAlpha(180)
+                        : Colors.grey[600],
                     fontSize: 12,
                   ),
                 ),
@@ -713,7 +994,9 @@ class _MapTabState extends State<MapTab> {
             Text(
               l10n.mapAdminAreaBasis(area.zoneCount),
               style: TextStyle(
-                color: isDark ? scheme.onSurface.withAlpha(220) : Colors.grey[700],
+                color: isDark
+                    ? scheme.onSurface.withAlpha(220)
+                    : Colors.grey[700],
                 fontSize: 12,
                 height: 1.4,
               ),
@@ -733,14 +1016,16 @@ class _MapTabState extends State<MapTab> {
           (zone) =>
               zone.hazardType == 'flood' || zone.hazardType == 'landslide',
         )
-        .where((zone) => zone.hazardType == _hazardFilter)
+        .where(
+          (zone) => _hazardFilter == 'all' || zone.hazardType == _hazardFilter,
+        )
         .toList();
   }
 
   List<AdminArea> get _filteredAdminAreas {
     if (_mapData == null) return const [];
     return _mapData!.adminAreas
-        .where((a) => a.hazardType == _hazardFilter)
+        .where((a) => _hazardFilter == 'all' || a.hazardType == _hazardFilter)
         .toList();
   }
 
@@ -753,6 +1038,198 @@ class _MapTabState extends State<MapTab> {
         area.boundary.map((p) => p.lon).reduce((a, b) => a + b) /
         area.boundary.length;
     return LatLng(lat, lon);
+  }
+
+  Color _reportColor(String reportType) {
+    return switch (reportType) {
+      'flood' || 'water_rising' => const Color(0xFF1D4ED8),
+      'landslide' => const Color(0xFFD97706),
+      'fire' => const Color(0xFFDC2626),
+      'blocked_road' => const Color(0xFF7C3AED),
+      'injury' || 'medical' => const Color(0xFFDB2777),
+      _ => const Color(0xFF374151),
+    };
+  }
+
+  void _showReportInfo(Map<String, dynamic> report) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final scheme = theme.colorScheme;
+    final type = (report['report_type'] as String? ?? 'report').toLowerCase();
+    final color = _reportColor(type);
+    final title = (report['location_name'] as String?)?.trim();
+    final description = (report['description'] as String?)?.trim() ?? '';
+    final vulnerable = report['vulnerable_person'] == true;
+    final vouches = (report['vouch_count'] as num?)?.toInt() ?? 0;
+    final confidence = (report['confidence_score'] as num?)?.toDouble();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? theme.cardColor : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: color.withAlpha(26),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(Icons.flag, color: color, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title?.isNotEmpty == true
+                            ? title!
+                            : type.replaceAll('_', ' ').toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: isDark
+                              ? scheme.onSurface
+                              : const Color(0xFF1E293B),
+                        ),
+                      ),
+                      Text(
+                        type.replaceAll('_', ' ').toUpperCase(),
+                        style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (description.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                description,
+                style: TextStyle(
+                  color: isDark
+                      ? scheme.onSurface.withAlpha(200)
+                      : Colors.grey[700],
+                  fontSize: 13,
+                  height: 1.5,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                if (vulnerable)
+                  _reportChip(
+                    Icons.warning_amber_rounded,
+                    _tr(
+                      en: 'Needs help',
+                      id: 'Butuh bantuan',
+                      ms: 'Perlu bantuan',
+                      zh: '需要帮助',
+                    ),
+                    isDark ? const Color(0xFFFCA5A5) : Colors.red.shade700,
+                    isDark ? const Color(0xFF3E1D1D) : Colors.red.shade50,
+                  ),
+                if (confidence != null)
+                  _reportChip(
+                    Icons.smart_toy_outlined,
+                    _tr(
+                      en: 'AI: ${(confidence * 100).toStringAsFixed(0)}% credible',
+                      id: 'AI: ${(confidence * 100).toStringAsFixed(0)}% kredibel',
+                      ms: 'AI: ${(confidence * 100).toStringAsFixed(0)}% dipercayai',
+                      zh: 'AI：可信度 ${(confidence * 100).toStringAsFixed(0)}%',
+                    ),
+                    confidence >= 0.7
+                        ? (isDark
+                              ? const Color(0xFF86EFAC)
+                              : Colors.green.shade700)
+                        : (isDark
+                              ? const Color(0xFFFCD34D)
+                              : Colors.amber.shade700),
+                    confidence >= 0.7
+                        ? (isDark
+                              ? const Color(0xFF14532D)
+                              : Colors.green.shade50)
+                        : (isDark
+                              ? const Color(0xFF373018)
+                              : Colors.amber.shade50),
+                  ),
+                if (vouches > 0)
+                  _reportChip(
+                    Icons.thumb_up_alt_outlined,
+                    _vouchLabel(vouches),
+                    isDark ? const Color(0xFF93C5FD) : Colors.blue.shade700,
+                    isDark ? const Color(0xFF192A3A) : Colors.blue.shade50,
+                  ),
+                _reportChip(
+                  Icons.verified,
+                  _tr(
+                    en: 'Verified',
+                    id: 'Terverifikasi',
+                    ms: 'Disahkan',
+                    zh: '已验证',
+                  ),
+                  isDark ? const Color(0xFF4CAF50) : Colors.green.shade700,
+                  isDark ? const Color(0xFF1A2D1A) : Colors.green.shade50,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _reportChip(IconData icon, String label, Color fg, Color bg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: fg,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Color _hazardColor(String hazardType) {
@@ -777,5 +1254,32 @@ class _MapTabState extends State<MapTab> {
       'landslide' => l10n.mapHazardLandslide,
       _ => l10n.mapHazardGeneric,
     };
+  }
+
+  String _vouchLabel(int count) {
+    return _tr(
+      en: '$count vouch${count == 1 ? '' : 'es'}',
+      id: '$count verifikasi',
+      ms: '$count sokongan',
+      zh: '$count 条确认',
+    );
+  }
+
+  String _tr({
+    required String en,
+    String? id,
+    required String ms,
+    required String zh,
+  }) {
+    switch (Localizations.localeOf(context).languageCode) {
+      case 'ms':
+        return ms;
+      case 'zh':
+        return zh;
+      case 'id':
+        return id ?? ms;
+      default:
+        return en;
+    }
   }
 }

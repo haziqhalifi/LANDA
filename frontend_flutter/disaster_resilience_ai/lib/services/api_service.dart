@@ -489,6 +489,27 @@ class ApiService {
 
   // ── Community Reports ─────────────────────────────────────────────────────
 
+  Future<Map<String, dynamic>> fetchMyReports({
+    required String accessToken,
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/reports/my').replace(
+      queryParameters: {
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+      },
+    );
+    final response = await _getWithNetworkHandling(
+      uri,
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(_extractErrorMessage(response));
+  }
+
   Future<Map<String, dynamic>> fetchNearbyReports({
     required String accessToken,
     required double latitude,
