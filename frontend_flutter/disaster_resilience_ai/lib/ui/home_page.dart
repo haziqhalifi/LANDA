@@ -430,10 +430,6 @@ class _HomePageState extends State<HomePage> {
     final borderColor = isDark
         ? const Color(0xFF334236)
         : const Color(0xFF2D5927).withAlpha(32);
-    final chipBg = isDark
-        ? const Color(0xFF2D5927).withAlpha(64)
-        : const Color(0xFF2D5927).withAlpha(16);
-    final chipFg = isDark ? const Color(0xFF9EDB94) : const Color(0xFF2D5927);
 
     final isLoaded = !_loadingWarnings;
     final hasError = _warningError != null;
@@ -483,39 +479,13 @@ class _HomePageState extends State<HomePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                _tr(en: 'Your Status', ms: 'Status Anda', zh: '您的状态'),
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: titleColor,
-                ),
-              ),
-            ),
-            TextButton.icon(
-              onPressed: _openWeatherPage,
-              icon: Icon(_weather?.icon ?? Icons.cloud_outlined, size: 18),
-              label: Text(
-                _weather != null
-                    ? '${_weather!.temperature.round()}°C'
-                    : '--°C',
-              ),
-              style: TextButton.styleFrom(
-                backgroundColor: chipBg,
-                foregroundColor: chipFg,
-                shape: const StadiumBorder(),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                minimumSize: const Size(0, 36),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-            ),
-          ],
+        Text(
+          _tr(en: 'Your Status', ms: 'Status Anda', zh: '您的状态'),
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: titleColor,
+          ),
         ),
         const SizedBox(height: 12),
         GridView.count(
@@ -1421,47 +1391,45 @@ class _HomePageState extends State<HomePage> {
   }
 
   List<Widget>? _buildTopBarActions(bool isDark) {
-    if (_selectedIndex != 0 || _allActiveWarnings.isEmpty) {
+    if (_selectedIndex != 0) {
       return null;
     }
 
-    final alertColor = isDark
-        ? const Color(0xFFF6C56B)
-        : const Color(0xFFB45309);
+    final chatTextColor = isDark
+        ? const Color(0xFFE5E7EB)
+        : const Color(0xFF163A12);
+    final chatBorder = isDark
+        ? const Color(0xFF3A4A3A)
+        : const Color(0xFFCEE4C8);
 
-    return [
+    final actions = <Widget>[
       Padding(
-        padding: const EdgeInsets.only(right: 12),
-        child: IconButton(
-          tooltip: _tr(en: 'Active alerts', ms: 'Amaran aktif', zh: '当前警报'),
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => AllWarningsPage(warnings: _allActiveWarnings),
+        padding: const EdgeInsets.only(right: 6),
+        child: TextButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ChatbotPage()),
+            );
+          },
+          style: TextButton.styleFrom(
+            foregroundColor: chatTextColor,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: chatBorder),
             ),
           ),
-          icon: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Icon(Icons.warning_amber_rounded, color: alertColor),
-              if (_nearbyWarnings.isNotEmpty)
-                Positioned(
-                  right: -1,
-                  top: -1,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Colors.redAccent,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-            ],
+          icon: const Icon(Icons.chat_bubble_rounded, size: 16),
+          label: const Text(
+            'LANDAi',
+            style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.2),
           ),
         ),
       ),
     ];
+
+    return actions;
   }
 
   void _scrollHomeToTop() {
@@ -1557,24 +1525,6 @@ class _HomePageState extends State<HomePage> {
         actions: _buildTopBarActions(isDark),
       ),
       body: _buildBody(),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
-      floatingActionButton: _selectedIndex == 0
-          ? FloatingActionButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ChatbotPage()),
-                );
-              },
-              backgroundColor: const Color(0xFF2E7D32),
-              tooltip: _tr(
-                en: 'Disaster Assistant',
-                ms: 'Pembantu Bencana',
-                zh: '灾害助手',
-              ),
-              child: const Icon(Icons.smart_toy_rounded, color: Colors.white),
-            )
-          : null,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: barBg,
