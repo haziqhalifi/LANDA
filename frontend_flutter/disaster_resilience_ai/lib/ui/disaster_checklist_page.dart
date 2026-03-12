@@ -18,6 +18,7 @@ class _ChecklistItem {
     required this.id,
     required this.title,
     required this.subtitle,
+    this.isDone = false,
   });
 }
 
