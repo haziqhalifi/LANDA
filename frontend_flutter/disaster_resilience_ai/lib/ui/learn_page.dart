@@ -99,6 +99,10 @@ class _LearnPageState extends State<LearnPage> {
 
   String _tr({required String en, required String ms, String? zh}) {
     final lang = AppLanguageScope.of(context).language;
+    if (lang == AppLanguage.indonesian) {
+      final id = indonesianText(en);
+      return id == en ? ms : id;
+    }
     if (lang == AppLanguage.malay) return ms;
     if (lang == AppLanguage.chinese) return zh ?? en;
     return en;
@@ -220,6 +224,122 @@ class _LearnPageState extends State<LearnPage> {
   List<_ModuleInfo> get _otherModules =>
       _allModules.where((m) => !_localHazards.contains(m.hazardType)).toList();
 
+  String _hazardName(String hazardType) {
+    return switch (hazardType) {
+      'flood' => _tr(en: 'Flood', ms: 'Banjir', zh: '洪水'),
+      'landslide' => _tr(en: 'Landslide', ms: 'Tanah Runtuh', zh: '山体滑坡'),
+      'earthquake' => _tr(en: 'Earthquake', ms: 'Gempa Bumi', zh: '地震'),
+      'storm' => _tr(en: 'Storm', ms: 'Ribut', zh: '风暴'),
+      'tsunami' => _tr(en: 'Tsunami', ms: 'Tsunami', zh: '海啸'),
+      'haze' => _tr(en: 'Haze', ms: 'Jerebu', zh: '雾霾'),
+      _ => hazardType,
+    };
+  }
+
+  String _moduleTitle(_ModuleInfo mod) {
+    return switch (mod.hazardType) {
+      'flood' => _tr(
+          en: 'Flood Preparedness',
+          ms: 'Kesiapsiagaan Banjir',
+          zh: '洪水应对准备',
+        ),
+      'landslide' => _tr(
+          en: 'Landslide Safety',
+          ms: 'Keselamatan Tanah Runtuh',
+          zh: '山体滑坡安全',
+        ),
+      'earthquake' => _tr(
+          en: 'Earthquake Response',
+          ms: 'Respons Gempa Bumi',
+          zh: '地震应对',
+        ),
+      'storm' => _tr(en: 'Storm & Typhoon', ms: 'Ribut & Taufan', zh: '风暴与台风'),
+      'tsunami' => _tr(
+          en: 'Tsunami Awareness',
+          ms: 'Kesedaran Tsunami',
+          zh: '海啸认知',
+        ),
+      'haze' => _tr(
+          en: 'Haze & Air Quality',
+          ms: 'Jerebu & Kualiti Udara',
+          zh: '雾霾与空气质量',
+        ),
+      _ => mod.title,
+    };
+  }
+
+  String _moduleSubtitle(_ModuleInfo mod) {
+    return switch (mod.hazardType) {
+      'flood' => _tr(
+          en: 'Learn to prepare, respond and recover from floods',
+          ms: 'Pelajari cara bersedia, bertindak balas dan pulih daripada banjir',
+          zh: '学习如何在洪水前准备、期间应对与灾后恢复',
+        ),
+      'landslide' => _tr(
+          en: 'Recognise warning signs and safe responses',
+          ms: 'Kenal pasti tanda amaran dan tindakan selamat',
+          zh: '识别预警信号并采取安全应对',
+        ),
+      'earthquake' => _tr(
+          en: 'Drop, cover, hold on — and what comes after',
+          ms: 'Tunduk, berlindung, pegang — dan langkah selepasnya',
+          zh: '伏地、掩护、抓牢，以及后续步骤',
+        ),
+      'storm' => _tr(
+          en: 'Preparedness for tropical storms and monsoon surges',
+          ms: 'Persediaan untuk ribut tropika dan lonjakan monsun',
+          zh: '热带风暴与季风潮涌应对准备',
+        ),
+      'tsunami' => _tr(
+          en: 'Know the signs and evacuation procedures',
+          ms: 'Kenali tanda-tanda dan prosedur pemindahan',
+          zh: '了解预兆与撤离流程',
+        ),
+      'haze' => _tr(
+          en: 'Protect your health during poor air quality events',
+          ms: 'Lindungi kesihatan anda semasa kejadian kualiti udara buruk',
+          zh: '在空气质量差时保护您的健康',
+        ),
+      _ => mod.subtitle,
+    };
+  }
+
+  List<String> _moduleTags(_ModuleInfo mod) {
+    return switch (mod.hazardType) {
+      'flood' => [
+          _tr(en: 'Monsoon', ms: 'Monsun', zh: '季风'),
+          _tr(en: 'Flash Flood', ms: 'Banjir Kilat', zh: '山洪'),
+          _tr(en: 'River Overflow', ms: 'Sungai Melimpah', zh: '河流漫溢'),
+        ],
+      'landslide' => [
+          _tr(en: 'Slope', ms: 'Cerun', zh: '坡地'),
+          _tr(en: 'Heavy Rainfall', ms: 'Hujan Lebat', zh: '强降雨'),
+          _tr(en: 'Soil Erosion', ms: 'Hakisan Tanah', zh: '土壤侵蚀'),
+        ],
+      'earthquake' => [
+          _tr(en: 'Tremor', ms: 'Gegaran', zh: '震动'),
+          _tr(en: 'Aftershock', ms: 'Gempa Susulan', zh: '余震'),
+          _tr(en: 'Structural Safety', ms: 'Keselamatan Struktur', zh: '结构安全'),
+        ],
+      'storm' => [
+          _tr(en: 'Typhoon', ms: 'Taufan', zh: '台风'),
+          _tr(en: 'Strong Wind', ms: 'Angin Kencang', zh: '强风'),
+          _tr(en: 'Monsoon', ms: 'Monsun', zh: '季风'),
+        ],
+      'tsunami' => [
+          _tr(en: 'Coastal', ms: 'Pesisir', zh: '沿海'),
+          _tr(en: 'Earthquake-Triggered', ms: 'Dicetus Gempa', zh: '地震触发'),
+          _tr(en: 'Evacuation', ms: 'Pemindahan', zh: '撤离'),
+        ],
+      'haze' => [
+          _tr(en: 'Pollution', ms: 'Pencemaran', zh: '污染'),
+          _tr(en: 'Respiratory', ms: 'Pernafasan', zh: '呼吸系统'),
+          _tr(en: 'N95 Mask', ms: 'Topeng N95', zh: 'N95口罩'),
+        ],
+      _ => mod.tags,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -247,7 +367,7 @@ class _LearnPageState extends State<LearnPage> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Learn',
+          _tr(en: 'Learn', ms: 'Belajar', zh: '学习'),
           style: TextStyle(
             color: titleColor,
             fontWeight: FontWeight.bold,
@@ -289,13 +409,21 @@ class _LearnPageState extends State<LearnPage> {
                   // Recommended for your area
                   if (_recommendedModules.isNotEmpty) ...[
                     _buildSectionTitle(
-                      'Recommended for Your Area',
+                      _tr(
+                        en: 'Recommended for Your Area',
+                        ms: 'Disyorkan untuk Kawasan Anda',
+                        zh: '为您所在区域推荐',
+                      ),
                       Icons.gps_fixed,
                       titleColor,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Based on disaster risks near your location',
+                      _tr(
+                        en: 'Based on disaster risks near your location',
+                        ms: 'Berdasarkan risiko bencana berhampiran lokasi anda',
+                        zh: '基于您附近的灾害风险',
+                      ),
                       style: TextStyle(fontSize: 12, color: subtitleColor),
                     ),
                     const SizedBox(height: 12),
@@ -307,8 +435,8 @@ class _LearnPageState extends State<LearnPage> {
                   // Other modules
                   _buildSectionTitle(
                     _recommendedModules.isNotEmpty
-                        ? 'Other Modules'
-                        : 'All Modules',
+                        ? _tr(en: 'Other Modules', ms: 'Modul Lain', zh: '其他模块')
+                        : _tr(en: 'All Modules', ms: 'Semua Modul', zh: '全部模块'),
                     Icons.menu_book,
                     titleColor,
                   ),
@@ -361,7 +489,11 @@ class _LearnPageState extends State<LearnPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Disaster Management Training',
+                      _tr(
+                        en: 'Disaster Management Training',
+                        ms: 'Latihan Pengurusan Bencana',
+                        zh: '灾害管理培训',
+                      ),
                       style: TextStyle(
                         color: titleColor,
                         fontWeight: FontWeight.bold,
@@ -370,7 +502,11 @@ class _LearnPageState extends State<LearnPage> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'AI-driven learning tailored to your area',
+                      _tr(
+                        en: 'AI-driven learning tailored to your area',
+                        ms: 'Pembelajaran berasaskan AI yang disesuaikan dengan kawasan anda',
+                        zh: '针对您所在区域定制的AI学习',
+                      ),
                       style: TextStyle(color: subtitleColor, fontSize: 12),
                     ),
                   ],
@@ -403,8 +539,16 @@ class _LearnPageState extends State<LearnPage> {
                   Expanded(
                     child: Text(
                       riskCount > 0
-                          ? '$riskCount danger zone${riskCount > 1 ? 's' : ''} nearby — ${_localHazards.join(', ')} risk detected'
-                          : '${_localHazards.length} hazard type${_localHazards.length > 1 ? 's' : ''} identified near you',
+                          ? _tr(
+                              en: '$riskCount danger zone${riskCount > 1 ? 's' : ''} nearby — ${_localHazards.map(_hazardName).join(', ')} risk detected',
+                              ms: '$riskCount zon bahaya berhampiran — risiko ${_localHazards.map(_hazardName).join(', ')} dikesan',
+                              zh: '附近有 $riskCount 个危险区域 — 检测到 ${_localHazards.map(_hazardName).join(', ')} 风险',
+                            )
+                          : _tr(
+                              en: '${_localHazards.length} hazard type${_localHazards.length > 1 ? 's' : ''} identified near you',
+                              ms: '${_localHazards.length} jenis bahaya dikenal pasti berhampiran anda',
+                              zh: '在您附近识别到 ${_localHazards.length} 种灾害类型',
+                            ),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -492,7 +636,7 @@ class _LearnPageState extends State<LearnPage> {
                     children: [
                       Expanded(
                         child: Text(
-                          mod.title,
+                          _moduleTitle(mod),
                           style: TextStyle(
                             color: titleColor,
                             fontWeight: FontWeight.w700,
@@ -516,7 +660,7 @@ class _LearnPageState extends State<LearnPage> {
                               Icon(Icons.gps_fixed, size: 10, color: mod.color),
                               const SizedBox(width: 4),
                               Text(
-                                'Nearby',
+                                _tr(en: 'Nearby', ms: 'Berdekatan', zh: '附近'),
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.bold,
@@ -530,14 +674,14 @@ class _LearnPageState extends State<LearnPage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    mod.subtitle,
+                    _moduleSubtitle(mod),
                     style: TextStyle(color: subtitleColor, fontSize: 12),
                   ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
-                    children: mod.tags
+                    children: _moduleTags(mod)
                         .map(
                           (t) => Container(
                             padding: const EdgeInsets.symmetric(

@@ -5,21 +5,36 @@ class EmergencyContactsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pageBg = isDark ? const Color(0xFF0F140F) : const Color(0xFFF0F2F5);
+    final appBarBg = isDark ? const Color(0xFF1B251B) : Colors.white;
+    final titleColor = isDark
+        ? const Color(0xFFE5E7EB)
+        : const Color(0xFF1E293B);
+    final divider = isDark
+        ? const Color(0xFF334236)
+        : const Color(0xFF2D5927).withAlpha(26);
+    final sectionTitle = isDark
+        ? const Color(0xFFE5E7EB)
+        : const Color(0xFF1E293B);
+    final tipBg = isDark ? const Color(0xFF3A2F16) : const Color(0xFFFFF8E1);
+    final tipBorder = isDark ? const Color(0xFF7C6630) : Colors.amber[200]!;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5),
+      backgroundColor: pageBg,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: appBarBg,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 1,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF1E293B)),
+          icon: Icon(Icons.arrow_back_ios, color: titleColor),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Emergency Contacts',
           style: TextStyle(
-            color: Color(0xFF1E293B),
+            color: titleColor,
             fontWeight: FontWeight.bold,
             fontSize: 16,
           ),
@@ -29,7 +44,7 @@ class EmergencyContactsPage extends StatelessWidget {
           preferredSize: const Size.fromHeight(1),
           child: Container(
             height: 1,
-            color: const Color(0xFF2D5927).withAlpha(26),
+            color: divider,
           ),
         ),
       ),
@@ -101,10 +116,10 @@ class EmergencyContactsPage extends StatelessWidget {
             const SizedBox(height: 28),
 
             // Official Emergency Numbers
-            const Text(
+            Text(
               'Official Emergency Lines',
               style: TextStyle(
-                color: Color(0xFF1E293B),
+                color: sectionTitle,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -112,6 +127,7 @@ class EmergencyContactsPage extends StatelessWidget {
             const SizedBox(height: 16),
 
             _buildContactCard(
+              context: context,
               icon: Icons.local_police,
               iconColor: Colors.blue[700]!,
               bgColor: Colors.blue[50]!,
@@ -120,6 +136,7 @@ class EmergencyContactsPage extends StatelessWidget {
               subtitle: 'National Emergency Line',
             ),
             _buildContactCard(
+              context: context,
               icon: Icons.local_fire_department,
               iconColor: Colors.red[700]!,
               bgColor: Colors.red[50]!,
@@ -128,6 +145,7 @@ class EmergencyContactsPage extends StatelessWidget {
               subtitle: 'Bomba Malaysia',
             ),
             _buildContactCard(
+              context: context,
               icon: Icons.medical_services,
               iconColor: const Color(0xFF2E7D32),
               bgColor: const Color(0xFFE8F5E9),
@@ -136,6 +154,7 @@ class EmergencyContactsPage extends StatelessWidget {
               subtitle: 'Medical Emergency',
             ),
             _buildContactCard(
+              context: context,
               icon: Icons.flood,
               iconColor: Colors.orange[700]!,
               bgColor: Colors.orange[50]!,
@@ -144,6 +163,7 @@ class EmergencyContactsPage extends StatelessWidget {
               subtitle: 'National Disaster Management',
             ),
             _buildContactCard(
+              context: context,
               icon: Icons.water,
               iconColor: Colors.teal[700]!,
               bgColor: Colors.teal[50]!,
@@ -155,10 +175,10 @@ class EmergencyContactsPage extends StatelessWidget {
             const SizedBox(height: 28),
 
             // Local Community Contacts
-            const Text(
+            Text(
               'Local Community Contacts',
               style: TextStyle(
-                color: Color(0xFF1E293B),
+                color: sectionTitle,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -166,6 +186,7 @@ class EmergencyContactsPage extends StatelessWidget {
             const SizedBox(height: 16),
 
             _buildContactCard(
+              context: context,
               icon: Icons.person,
               iconColor: const Color(0xFF2E7D32),
               bgColor: const Color(0xFFE8F5E9),
@@ -174,6 +195,7 @@ class EmergencyContactsPage extends StatelessWidget {
               subtitle: 'Village Chief, Kg. Melayu',
             ),
             _buildContactCard(
+              context: context,
               icon: Icons.groups,
               iconColor: Colors.purple[700]!,
               bgColor: Colors.purple[50]!,
@@ -182,6 +204,7 @@ class EmergencyContactsPage extends StatelessWidget {
               subtitle: 'Civil Defence Volunteers',
             ),
             _buildContactCard(
+              context: context,
               icon: Icons.local_hospital,
               iconColor: Colors.red[700]!,
               bgColor: Colors.red[50]!,
@@ -196,9 +219,9 @@ class EmergencyContactsPage extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF8E1),
+                color: tipBg,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.amber[200]!),
+                border: Border.all(color: tipBorder),
               ),
               child: Row(
                 children: [
@@ -211,7 +234,7 @@ class EmergencyContactsPage extends StatelessWidget {
                         Text(
                           'Tip',
                           style: TextStyle(
-                            color: Colors.amber[900],
+                            color: isDark ? Colors.amber[200] : Colors.amber[900],
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                           ),
@@ -220,7 +243,7 @@ class EmergencyContactsPage extends StatelessWidget {
                         Text(
                           'Save these contacts offline. SMS fallback works when there is no internet.',
                           style: TextStyle(
-                            color: Colors.amber[800],
+                            color: isDark ? Colors.amber[100] : Colors.amber[800],
                             fontSize: 12,
                             height: 1.4,
                           ),
@@ -239,6 +262,7 @@ class EmergencyContactsPage extends StatelessWidget {
   }
 
   Widget _buildContactCard({
+    required BuildContext context,
     required IconData icon,
     required Color iconColor,
     required Color bgColor,
@@ -246,15 +270,34 @@ class EmergencyContactsPage extends StatelessWidget {
     required String phone,
     required String subtitle,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardBg = isDark ? const Color(0xFF1B251B) : Colors.white;
+    final cardTitle = isDark
+        ? const Color(0xFFE5E7EB)
+        : const Color(0xFF1E293B);
+    final subtitleColor = isDark
+        ? const Color(0xFF9AA79B)
+        : Colors.grey[500]!;
+    final phoneColor = isDark ? const Color(0xFF9EDB94) : const Color(0xFF2E7D32);
+    final callChipBg = isDark
+        ? const Color(0xFF2D5927).withAlpha(56)
+        : const Color(0xFFE8F5E9);
+    final iconChipBg = isDark ? iconColor.withAlpha(48) : bgColor;
+    final iconChipBorder = isDark
+        ? iconColor.withAlpha(120)
+        : Colors.transparent;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: isDark
+                ? Colors.black.withAlpha(64)
+                : Colors.black.withValues(alpha: 0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -265,8 +308,9 @@ class EmergencyContactsPage extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: bgColor,
+              color: iconChipBg,
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: iconChipBorder),
             ),
             child: Icon(icon, color: iconColor, size: 24),
           ),
@@ -277,8 +321,8 @@ class EmergencyContactsPage extends StatelessWidget {
               children: [
                 Text(
                   name,
-                  style: const TextStyle(
-                    color: Color(0xFF1E293B),
+                  style: TextStyle(
+                    color: cardTitle,
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
                   ),
@@ -286,7 +330,7 @@ class EmergencyContactsPage extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                  style: TextStyle(color: subtitleColor, fontSize: 11),
                 ),
               ],
             ),
@@ -296,8 +340,8 @@ class EmergencyContactsPage extends StatelessWidget {
             children: [
               Text(
                 phone,
-                style: const TextStyle(
-                  color: Color(0xFF2E7D32),
+                style: TextStyle(
+                  color: phoneColor,
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                 ),
@@ -306,12 +350,12 @@ class EmergencyContactsPage extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
+                  color: callChipBg,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.phone,
-                  color: Color(0xFF2E7D32),
+                  color: phoneColor,
                   size: 16,
                 ),
               ),

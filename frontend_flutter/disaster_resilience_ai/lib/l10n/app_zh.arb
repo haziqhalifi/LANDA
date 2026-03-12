@@ -1,0 +1,26 @@
+{
+  "@@locale": "zh",
+  "mapFilterFlood": "洪水",
+  "mapFilterLandslide": "山体滑坡",
+  "mapLegendTitle": "灾害地图",
+  "mapLegendFloodRiskZone": "洪水风险区",
+  "mapLegendLandslideRiskZone": "山体滑坡风险区",
+  "mapLoadingHazardZones": "正在加载灾害区域...",
+  "mapRiskScoreLabel": "风险评分: ",
+  "mapAreaRiskLabel": "区域风险: ",
+  "mapRadiusKm": "半径: {radius} 公里",
+  "@mapRadiusKm": {
+    "placeholders": {
+      "radius": {}
+    }
+  },
+  "mapAdminAreaBasis": "基于该行政区域内已映射的 {count} 个灾害点。",
+  "@mapAdminAreaBasis": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "mapHazardFlood": "洪水",
+  "mapHazardLandslide": "山体滑坡",
+  "mapHazardGeneric": "灾害"
+}

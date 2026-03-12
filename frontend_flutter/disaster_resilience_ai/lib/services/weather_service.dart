@@ -146,4 +146,35 @@ class WeatherService {
     }
     return parts.join(', ');
   }
+
+  Future<List<Map<String, dynamic>>> searchLocation(String query) async {
+    if (query.trim().isEmpty) return [];
+    try {
+      final uri = Uri.parse('https://nominatim.openstreetmap.org/search').replace(
+        queryParameters: {
+          'q': query.trim(),
+          'format': 'json',
+          'countrycodes': 'my',
+          'limit': '6',
+          'accept-language': 'en',
+        },
+      );
+      final response = await http.get(uri, headers: {
+        'User-Agent': 'DisasterResilienceApp/1.0',
+      }).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) return [];
+      final list = jsonDecode(response.body) as List<dynamic>;
+      return list.map((e) {
+        final parts = (e['display_name'] as String).split(',');
+        final name = parts.take(2).map((s) => s.trim()).join(', ');
+        return {
+          'name': name,
+          'lat': double.parse(e['lat'].toString()),
+          'lon': double.parse(e['lon'].toString()),
+        };
+      }).toList();
+    } catch (_) {
+      return [];
+    }
+  }
 }

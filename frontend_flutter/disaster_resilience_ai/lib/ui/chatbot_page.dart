@@ -58,6 +58,8 @@ class _ChatbotPageState extends State<ChatbotPage>
     return switch (language) {
       AppLanguage.english =>
         'Hi there! 👋 I\'m your LANDA assistant.\n\nAsk me anything about floods, earthquakes, evacuation, emergency kits, or how to use this app!',
+      AppLanguage.indonesian =>
+        'Hai! 👋 Saya asisten LANDA Anda.\n\nTanyakan apa saja tentang banjir, gempa bumi, evakuasi, perlengkapan darurat, atau cara menggunakan aplikasi ini!',
       AppLanguage.malay =>
         'Hai! 👋 Saya pembantu LANDA anda.\n\nTanya saya apa-apa tentang banjir, gempa bumi, pemindahan, kit kecemasan, atau cara menggunakan aplikasi ini!',
       AppLanguage.chinese =>
@@ -68,6 +70,12 @@ class _ChatbotPageState extends State<ChatbotPage>
   List<String> _localizedSuggestions(AppLanguage language) {
     return switch (language) {
       AppLanguage.english => ChatbotService.suggestions,
+      AppLanguage.indonesian => const [
+        'Apa yang harus dilakukan saat banjir?',
+        'Bagaimana jika terjadi gempa bumi?',
+        'Apa saja isi kit darurat?',
+        'Bagaimana mencari pusat evakuasi?',
+      ],
       AppLanguage.malay => const [
         'Apa perlu dibuat semasa banjir?',
         'Bagaimana jika gempa bumi berlaku?',
@@ -209,6 +217,7 @@ class _ChatbotPageState extends State<ChatbotPage>
                 Text(
                   switch (language) {
                     AppLanguage.english => 'Assistant Chatbot',
+                    AppLanguage.indonesian => 'Asisten Chatbot',
                     AppLanguage.malay => 'Pembantu Chatbot',
                     AppLanguage.chinese => '智能助手',
                   },
@@ -451,6 +460,7 @@ class _ChatbotPageState extends State<ChatbotPage>
               decoration: InputDecoration(
                 hintText: switch (language) {
                   AppLanguage.english => 'Ask about disasters...',
+                  AppLanguage.indonesian => 'Tanyakan tentang bencana...',
                   AppLanguage.malay => 'Tanya tentang bencana...',
                   AppLanguage.chinese => '询问灾害相关问题...',
                 },

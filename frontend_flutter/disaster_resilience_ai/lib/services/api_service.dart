@@ -489,6 +489,34 @@ class ApiService {
 
   // ── Community Reports ─────────────────────────────────────────────────────
 
+  Future<Map<String, dynamic>> fetchNearbyReports({
+    required String accessToken,
+    required double latitude,
+    required double longitude,
+    double radiusKm = 50,
+    String? statusFilter,
+  }) async {
+    final params = <String, String>{
+      'latitude': latitude.toString(),
+      'longitude': longitude.toString(),
+      'radius_km': radiusKm.toString(),
+    };
+    if (statusFilter != null && statusFilter.isNotEmpty) {
+      params['status_filter'] = statusFilter;
+    }
+    final uri = Uri.parse('$baseUrl/api/v1/reports/nearby/list').replace(
+      queryParameters: params,
+    );
+    final response = await _getWithNetworkHandling(
+      uri,
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(_extractErrorMessage(response));
+  }
+
   Future<Map<String, dynamic>> uploadReportMedia({
     required String accessToken,
     required Uint8List bytes,
@@ -544,6 +572,41 @@ class ApiService {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
     throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<void> vouchReport({
+    required String accessToken,
+    required String reportId,
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/reports/$reportId/vouch'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {},
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(_extractErrorMessage(response));
+    }
+  }
+
+  Future<void> unvouchReport({
+    required String accessToken,
+    required String reportId,
+  }) async {
+    try {
+      final response = await _client
+          .delete(
+            Uri.parse('$baseUrl/api/v1/reports/$reportId/vouch'),
+            headers: {'Authorization': 'Bearer $accessToken'},
+          )
+          .timeout(_requestTimeout);
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception(_extractErrorMessage(response));
+      }
+    } on TimeoutException {
+      throw Exception(_connectivityErrorMessage());
+    } on http.ClientException {
+      throw Exception(_connectivityErrorMessage());
+    }
   }
 
   MediaType? _parseMediaType(String contentType) {

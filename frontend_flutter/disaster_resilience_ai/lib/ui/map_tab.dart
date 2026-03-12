@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'package:disaster_resilience_ai/l10n/app_localizations.dart';
 import 'package:disaster_resilience_ai/models/risk_map_model.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
 
@@ -233,6 +234,7 @@ class _MapTabState extends State<MapTab> {
   // ── Top Controls ──────────────────────────────────────────────────────────
 
   Widget _buildTopControls() {
+    final l10n = AppLocalizations.of(context);
     return Positioned(
       top: 8,
       left: 12,
@@ -240,8 +242,8 @@ class _MapTabState extends State<MapTab> {
       child: SafeArea(
         child: Row(
           children: [
-            _buildFilterChip('Flood', 'flood'),
-            _buildFilterChip('Landslide', 'landslide'),
+            _buildFilterChip(l10n.mapFilterFlood, 'flood'),
+            _buildFilterChip(l10n.mapFilterLandslide, 'landslide'),
           ],
         ),
       ),
@@ -249,7 +251,24 @@ class _MapTabState extends State<MapTab> {
   }
 
   Widget _buildFilterChip(String label, String type) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final isSelected = _hazardFilter == type;
+    final selectedColor = _hazardColor(type);
+    final bgColor = isSelected
+        ? selectedColor
+        : (isDark ? theme.cardColor : Colors.white);
+    final textColor = isSelected
+        ? Colors.white
+        : (isDark ? scheme.onSurface.withAlpha(220) : Colors.grey[700]!);
+    final borderColor = isDark
+        ? scheme.outline.withAlpha(170)
+        : const Color(0xFFE2E8F0);
+    final shadowColor = isDark
+        ? Colors.black.withAlpha(70)
+        : Colors.black.withAlpha(20);
+
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.only(right: 6),
@@ -262,17 +281,18 @@ class _MapTabState extends State<MapTab> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: isSelected ? _hazardColor(type) : Colors.white,
+              color: bgColor,
               borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 4),
-              ],
+              border: Border.all(
+                color: isSelected ? selectedColor : borderColor,
+              ),
+              boxShadow: [BoxShadow(color: shadowColor, blurRadius: 4)],
             ),
             child: Text(
               label,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.grey[700],
+                color: textColor,
                 fontWeight: FontWeight.w700,
                 fontSize: 12,
               ),
@@ -286,41 +306,71 @@ class _MapTabState extends State<MapTab> {
   // ── Legend ─────────────────────────────────────────────────────────────────
 
   Widget _buildLegend() {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final panelBg = isDark ? theme.cardColor : Colors.white;
+    final panelBorder = isDark
+        ? scheme.outline.withAlpha(170)
+        : const Color(0xFFE2E8F0);
+    final panelTitle = isDark
+        ? scheme.onSurface
+        : const Color(0xFF1E293B);
+    final shadowColor = isDark
+        ? Colors.black.withAlpha(70)
+        : Colors.black.withAlpha(26);
+
     return Positioned(
       bottom: 16,
       left: 12,
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: panelBg,
           borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withAlpha(26), blurRadius: 6),
-          ],
+          border: Border.all(color: panelBorder),
+          boxShadow: [BoxShadow(color: shadowColor, blurRadius: 6)],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'HAZARD MAP',
+            Text(
+              l10n.mapLegendTitle,
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 11,
                 letterSpacing: 1,
-                color: Color(0xFF1E293B),
+                color: panelTitle,
               ),
             ),
             const SizedBox(height: 8),
-            _buildLegendItem(_hazardColor('flood'), 'Flood Risk Zone'),
-            _buildLegendItem(_hazardColor('landslide'), 'Landslide Risk Zone'),
+            _buildLegendItem(
+              _hazardColor('flood'),
+              l10n.mapLegendFloodRiskZone,
+              textColor: isDark
+                  ? scheme.onSurface.withAlpha(220)
+                  : const Color(0xFF334155),
+            ),
+            _buildLegendItem(
+              _hazardColor('landslide'),
+              l10n.mapLegendLandslideRiskZone,
+              textColor: isDark
+                  ? scheme.onSurface.withAlpha(220)
+                  : const Color(0xFF334155),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildLegendItem(Color color, String label) {
+  Widget _buildLegendItem(
+    Color color,
+    String label, {
+    required Color textColor,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
@@ -338,7 +388,11 @@ class _MapTabState extends State<MapTab> {
           const SizedBox(width: 6),
           Text(
             label,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: textColor,
+            ),
           ),
         ],
       ),
@@ -348,20 +402,27 @@ class _MapTabState extends State<MapTab> {
   // ── Loading Overlay ───────────────────────────────────────────────────────
 
   Widget _buildLoadingOverlay() {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final overlayTextColor = isDark ? scheme.onSurface : const Color(0xFF1E293B);
+    final overlayBg = isDark ? Colors.black.withAlpha(120) : Colors.white.withAlpha(153);
+
     return Container(
-      color: Colors.white.withAlpha(153),
-      child: const Center(
+      color: overlayBg,
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(
+            const CircularProgressIndicator(
               valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF2E7D32)),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Text(
-              'Loading hazard zones...',
+              l10n.mapLoadingHazardZones,
               style: TextStyle(
-                color: Color(0xFF1E293B),
+                color: overlayTextColor,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -374,6 +435,12 @@ class _MapTabState extends State<MapTab> {
   // ── Locate Me Button ──────────────────────────────────────────────────────
 
   Widget _buildLocateButton() {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final fabBg = isDark ? theme.cardColor : Colors.white;
+    final fabFg = isDark ? scheme.primary : const Color(0xFF2E7D32);
+
     return Positioned(
       bottom: 16,
       right: 12,
@@ -383,7 +450,8 @@ class _MapTabState extends State<MapTab> {
           FloatingActionButton(
             heroTag: 'locate',
             mini: true,
-            backgroundColor: Colors.white,
+            backgroundColor: fabBg,
+            foregroundColor: fabFg,
             onPressed: () async {
               await _getUserLocation();
               if (_userLocation != null) {
@@ -396,15 +464,16 @@ class _MapTabState extends State<MapTab> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.my_location, color: Color(0xFF2E7D32)),
+                : Icon(Icons.my_location, color: fabFg),
           ),
           const SizedBox(height: 8),
           FloatingActionButton(
             heroTag: 'refresh',
             mini: true,
-            backgroundColor: Colors.white,
+            backgroundColor: fabBg,
+            foregroundColor: fabFg,
             onPressed: _loadMapData,
-            child: const Icon(Icons.refresh, color: Color(0xFF2E7D32)),
+            child: Icon(Icons.refresh, color: fabFg),
           ),
         ],
       ),
@@ -414,10 +483,14 @@ class _MapTabState extends State<MapTab> {
   // ── Info Bottom Sheets ────────────────────────────────────────────────────
 
   void _showZoneInfo(RiskZone zone) {
+    final l10n = AppLocalizations.of(context);
     final color = _hazardColor(zone.hazardType);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? theme.cardColor : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -432,7 +505,7 @@ class _MapTabState extends State<MapTab> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: isDark ? Colors.white24 : Colors.grey[300],
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -459,14 +532,14 @@ class _MapTabState extends State<MapTab> {
                     children: [
                       Text(
                         zone.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E293B),
+                          color: isDark ? scheme.onSurface : const Color(0xFF1E293B),
                         ),
                       ),
                       Text(
-                        zone.hazardType.toUpperCase(),
+                        _hazardLabel(zone.hazardType, l10n).toUpperCase(),
                         style: TextStyle(
                           color: color,
                           fontWeight: FontWeight.w600,
@@ -482,9 +555,13 @@ class _MapTabState extends State<MapTab> {
             // Risk Score Bar
             Row(
               children: [
-                const Text(
-                  'Risk Score: ',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                Text(
+                  l10n.mapRiskScoreLabel,
+                  style: TextStyle(
+                    color: isDark ? scheme.onSurface : null,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
                 ),
                 Text(
                   '${(zone.riskScore * 100).toInt()}%',
@@ -502,7 +579,7 @@ class _MapTabState extends State<MapTab> {
               child: LinearProgressIndicator(
                 value: zone.riskScore,
                 minHeight: 8,
-                backgroundColor: Colors.grey[200],
+                backgroundColor: isDark ? Colors.white24 : Colors.grey[200],
                 valueColor: AlwaysStoppedAnimation<Color>(color),
               ),
             ),
@@ -510,7 +587,7 @@ class _MapTabState extends State<MapTab> {
             Text(
               zone.description,
               style: TextStyle(
-                color: Colors.grey[700],
+                color: isDark ? scheme.onSurface.withAlpha(220) : Colors.grey[700],
                 fontSize: 13,
                 height: 1.5,
               ),
@@ -518,18 +595,32 @@ class _MapTabState extends State<MapTab> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Icon(Icons.radar, size: 16, color: Colors.grey[500]),
+                Icon(
+                  Icons.radar,
+                  size: 16,
+                  color: isDark ? scheme.onSurface.withAlpha(170) : Colors.grey[500],
+                ),
                 const SizedBox(width: 4),
                 Text(
-                  'Radius: ${zone.radiusKm} km',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  l10n.mapRadiusKm(zone.radiusKm.toString()),
+                  style: TextStyle(
+                    color: isDark ? scheme.onSurface.withAlpha(180) : Colors.grey[600],
+                    fontSize: 12,
+                  ),
                 ),
                 const SizedBox(width: 16),
-                Icon(Icons.location_on, size: 16, color: Colors.grey[500]),
+                Icon(
+                  Icons.location_on,
+                  size: 16,
+                  color: isDark ? scheme.onSurface.withAlpha(170) : Colors.grey[500],
+                ),
                 const SizedBox(width: 4),
                 Text(
                   '${zone.latitude.toStringAsFixed(4)}, ${zone.longitude.toStringAsFixed(4)}',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                  style: TextStyle(
+                    color: isDark ? scheme.onSurface.withAlpha(180) : Colors.grey[600],
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -541,10 +632,14 @@ class _MapTabState extends State<MapTab> {
   }
 
   void _showAdminAreaInfo(AdminArea area) {
+    final l10n = AppLocalizations.of(context);
     final color = _hazardColor(area.hazardType);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? theme.cardColor : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -559,7 +654,7 @@ class _MapTabState extends State<MapTab> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: isDark ? Colors.white24 : Colors.grey[300],
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -567,15 +662,15 @@ class _MapTabState extends State<MapTab> {
             const SizedBox(height: 16),
             Text(
               area.name,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1E293B),
+                color: isDark ? scheme.onSurface : const Color(0xFF1E293B),
               ),
             ),
             const SizedBox(height: 4),
             Text(
-              area.hazardType.toUpperCase(),
+              _hazardLabel(area.hazardType, l10n).toUpperCase(),
               style: TextStyle(
                 color: color,
                 fontWeight: FontWeight.w700,
@@ -586,9 +681,13 @@ class _MapTabState extends State<MapTab> {
             const SizedBox(height: 14),
             Row(
               children: [
-                const Text(
-                  'Area Risk: ',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                Text(
+                  l10n.mapAreaRiskLabel,
+                  style: TextStyle(
+                    color: isDark ? scheme.onSurface : null,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
                 ),
                 Text(
                   '${(area.riskScore * 100).toStringAsFixed(0)}%',
@@ -606,15 +705,15 @@ class _MapTabState extends State<MapTab> {
               child: LinearProgressIndicator(
                 value: area.riskScore,
                 minHeight: 8,
-                backgroundColor: Colors.grey[200],
+                backgroundColor: isDark ? Colors.white24 : Colors.grey[200],
                 valueColor: AlwaysStoppedAnimation<Color>(color),
               ),
             ),
             const SizedBox(height: 12),
             Text(
-              'Based on ${area.zoneCount} mapped hazard point(s) inside this administrative area.',
+              l10n.mapAdminAreaBasis(area.zoneCount),
               style: TextStyle(
-                color: Colors.grey[700],
+                color: isDark ? scheme.onSurface.withAlpha(220) : Colors.grey[700],
                 fontSize: 12,
                 height: 1.4,
               ),
@@ -669,6 +768,14 @@ class _MapTabState extends State<MapTab> {
       'flood' => Icons.flood,
       'landslide' => Icons.terrain,
       _ => Icons.help_outline,
+    };
+  }
+
+  String _hazardLabel(String hazardType, AppLocalizations l10n) {
+    return switch (hazardType) {
+      'flood' => l10n.mapHazardFlood,
+      'landslide' => l10n.mapHazardLandslide,
+      _ => l10n.mapHazardGeneric,
     };
   }
 }

@@ -173,19 +173,25 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
   }
 
   Widget _buildNoWarningState(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final surface = theme.scaffoldBackgroundColor;
+    final onSurface = scheme.onSurface;
+    final successBg = isDark ? const Color(0xFF1B3320) : const Color(0xFFE8F5E9);
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: surface,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF8F9FA),
+        backgroundColor: theme.appBarTheme.backgroundColor ?? surface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Color(0xFF1E293B)),
+          icon: Icon(Icons.arrow_back_ios, color: onSurface),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'Warning Details',
           style: TextStyle(
-            color: Color(0xFF1E293B),
+            color: onSurface,
             fontWeight: FontWeight.bold,
             fontSize: 16,
           ),
@@ -200,13 +206,13 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
             children: [
               Container(
                 padding: const EdgeInsets.all(24),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFE8F5E9),
+                decoration: BoxDecoration(
+                  color: successBg,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.check_circle_outline,
-                  color: Color(0xFF2E7D32),
+                  color: Color(0xFF2D5927),
                   size: 72,
                 ),
               ),
@@ -214,16 +220,20 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
               const Text(
                 'All Clear',
                 style: TextStyle(
-                  color: Color(0xFF2E7D32),
+                  color: Color(0xFF2D5927),
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'No active warnings near your location.\nStay safe and prepared.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 15, height: 1.5),
+                style: TextStyle(
+                  color: isDark ? Colors.white70 : Colors.grey[600],
+                  fontSize: 15,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 40),
               SizedBox(
@@ -252,7 +262,17 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
   }
 
   Widget _buildWarningState(BuildContext context, Warning w) {
-    final bgColor = _alertColor(w.alertLevel);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final bgColor = _alertBackground(w.alertLevel, isDark);
+    final cardColor = isDark ? theme.cardColor : Colors.white;
+    final cardText = isDark ? scheme.onSurface : const Color(0xFF111827);
+    final tipBg = isDark
+        ? scheme.tertiaryContainer.withAlpha(180)
+        : Colors.amber[50]!;
+    final fallbackFill = isDark ? Colors.black.withAlpha(56) : Colors.white.withAlpha(38);
+    final fallbackBorder = isDark ? Colors.white24 : Colors.white.withAlpha(80);
     final timeAgo = _timeAgo(w.createdAt);
 
     return Scaffold(
@@ -343,7 +363,7 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                 width: double.infinity,
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: cardColor,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: _loading
@@ -443,11 +463,13 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: cardColor,
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withAlpha(26),
+                        color: isDark
+                            ? Colors.black.withAlpha(44)
+                            : Colors.black.withAlpha(26),
                         blurRadius: 10,
                       ),
                     ],
@@ -466,6 +488,7 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                           Text(
                             'RURAL EVACUATION GUIDE',
                             style: TextStyle(
+                              color: Color(0xFF2E7D32),
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                               letterSpacing: 0.5,
@@ -477,7 +500,7 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                       Text(
                         'BAHASA MALAYSIA:',
                         style: TextStyle(
-                          color: Colors.grey[700],
+                          color: isDark ? Colors.white70 : Colors.grey[700],
                           fontWeight: FontWeight.bold,
                           fontSize: 11,
                         ),
@@ -486,7 +509,8 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                       Text(
                         'Sila bergerak ke arah ${_getDirection(_userLocation!, LatLng(_nearestCentre!.latitude, _nearestCentre!.longitude))} menuju ke ${_nearestCentre!.name}. '
                         'Jarak adalah lebih kurang ${_calculateDistance(_userLocation!.latitude, _userLocation!.longitude, _nearestCentre!.latitude, _nearestCentre!.longitude).toStringAsFixed(1)} KM dari sini.',
-                        style: const TextStyle(
+                        style: TextStyle(
+                          color: cardText,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           height: 1.4,
@@ -496,7 +520,7 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                       Text(
                         'ENGLISH:',
                         style: TextStyle(
-                          color: Colors.grey[700],
+                          color: isDark ? Colors.white70 : Colors.grey[700],
                           fontWeight: FontWeight.bold,
                           fontSize: 11,
                         ),
@@ -505,7 +529,8 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                       Text(
                         'Please head ${_getDirection(_userLocation!, LatLng(_nearestCentre!.latitude, _nearestCentre!.longitude))} towards ${_nearestCentre!.name}. '
                         'It is about ${_calculateDistance(_userLocation!.latitude, _userLocation!.longitude, _nearestCentre!.latitude, _nearestCentre!.longitude).toStringAsFixed(1)} KM away.',
-                        style: const TextStyle(
+                        style: TextStyle(
+                          color: cardText,
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           height: 1.4,
@@ -515,7 +540,7 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.amber[50],
+                          color: tipBg,
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(
@@ -526,10 +551,11 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                               size: 20,
                             ),
                             const SizedBox(width: 10),
-                            const Expanded(
+                            Expanded(
                               child: Text(
                                 'Safe Tip: Avoid low-lying river paths even if they seem shorter.',
                                 style: TextStyle(
+                                  color: cardText,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -553,9 +579,9 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(38),
+                    color: fallbackFill,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white.withAlpha(80)),
+                    border: Border.all(color: fallbackBorder),
                   ),
                   child: const Row(
                     children: [
@@ -598,8 +624,10 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                         }
                       : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: bgColor,
+                    backgroundColor: isDark
+                        ? scheme.surfaceContainerHighest.withAlpha(235)
+                        : Colors.white,
+                    foregroundColor: isDark ? scheme.onSurface : bgColor,
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -634,7 +662,7 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                           : 'TAP TO VIEW RECOMMENDED SAFE ROUTES'),
                 style: TextStyle(
                   color: _routePoints.isEmpty && !_loading
-                      ? Colors.yellow
+                      ? (isDark ? scheme.tertiary : Colors.yellow)
                       : Colors.white70,
                   fontSize: 11,
                   letterSpacing: 1.2,
@@ -687,6 +715,12 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
     }
   }
 
+  Color _alertBackground(AlertLevel level, bool isDark) {
+    final base = _alertColor(level);
+    if (!isDark) return base;
+    return Color.alphaBlend(Colors.black.withAlpha(90), base);
+  }
+
   IconData _alertIcon(Warning w) {
     // Priority icons for non-standard hazard types
     if (w.hazardType == HazardType.aid) return Icons.volunteer_activism;
@@ -714,9 +748,12 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
   }
 
   void _showWarningDetails(BuildContext context, Warning w) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: isDark ? theme.cardColor : Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -731,35 +768,37 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: isDark ? Colors.white24 : Colors.grey[300],
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               'Warning Details',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1E293B),
+                color: isDark ? scheme.onSurface : const Color(0xFF1E293B),
               ),
             ),
             const SizedBox(height: 16),
-            _buildDetailRow('ID', w.id.substring(0, 8)),
-            _buildDetailRow('Hazard', w.hazardType.displayName),
-            _buildDetailRow('Level', w.alertLevel.displayName),
-            _buildDetailRow('Source', w.source),
-            _buildDetailRow('Radius', '${w.radiusKm} km'),
+            _buildDetailRow(context, 'ID', w.id.substring(0, 8)),
+            _buildDetailRow(context, 'Hazard', w.hazardType.displayName),
+            _buildDetailRow(context, 'Level', w.alertLevel.displayName),
+            _buildDetailRow(context, 'Source', w.source),
+            _buildDetailRow(context, 'Radius', '${w.radiusKm} km'),
             _buildDetailRow(
+              context,
               'Coordinates',
               '${w.location.latitude.toStringAsFixed(4)}, ${w.location.longitude.toStringAsFixed(4)}',
             ),
             _buildDetailRow(
+              context,
               'Created',
               w.createdAt.toLocal().toString().substring(0, 19),
             ),
-            _buildDetailRow('Status', w.active ? 'Active' : 'Resolved'),
+            _buildDetailRow(context, 'Status', w.active ? 'Active' : 'Resolved'),
             const SizedBox(height: 16),
           ],
         ),
@@ -767,7 +806,8 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(BuildContext context, String label, String value) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -777,7 +817,7 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
             child: Text(
               label,
               style: TextStyle(
-                color: Colors.grey[600],
+                color: isDark ? Colors.white70 : Colors.grey[600],
                 fontWeight: FontWeight.w600,
                 fontSize: 13,
               ),
@@ -786,8 +826,8 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                color: Color(0xFF1E293B),
+              style: TextStyle(
+                color: isDark ? Colors.white : const Color(0xFF1E293B),
                 fontWeight: FontWeight.bold,
                 fontSize: 13,
               ),
