@@ -1557,7 +1557,7 @@ class _HomePageState extends State<HomePage> {
         actions: _buildTopBarActions(isDark),
       ),
       body: _buildBody(),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endTop,
       floatingActionButton: _selectedIndex == 0
           ? FloatingActionButton(
               onPressed: () {

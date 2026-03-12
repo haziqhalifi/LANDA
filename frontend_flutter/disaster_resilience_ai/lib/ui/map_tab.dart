@@ -1051,7 +1051,9 @@ class _MapTabState extends State<MapTab> {
     };
   }
 
-  Future<Map<String, dynamic>> _toggleReportVouch(Map<String, dynamic> report) async {
+  Future<Map<String, dynamic>> _toggleReportVouch(
+    Map<String, dynamic> report,
+  ) async {
     final token = widget.accessToken;
     final reportId = report['id']?.toString();
     if (token.isEmpty || reportId == null || reportId.isEmpty) {
@@ -1116,197 +1118,224 @@ class _MapTabState extends State<MapTab> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white24 : Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: color.withAlpha(26),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(Icons.flag, color: color, size: 22),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title?.isNotEmpty == true
-                            ? title!
-                            : type.replaceAll('_', ' ').toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: isDark
-                              ? scheme.onSurface
-                              : const Color(0xFF1E293B),
-                        ),
-                      ),
-                      Text(
-                        type.replaceAll('_', ' ').toUpperCase(),
-                        style: TextStyle(
-                          color: color,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-              ],
-            ),
-            if (mediaUrls.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  mediaUrls.first,
-                  height: 140,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    height: 72,
-                    alignment: Alignment.center,
-                    color: isDark ? const Color(0xFF1A1F1A) : const Color(0xFFF1F5F9),
-                    child: Text(
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: color.withAlpha(26),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(Icons.flag, color: color, size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title?.isNotEmpty == true
+                                ? title!
+                                : type.replaceAll('_', ' ').toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: isDark
+                                  ? scheme.onSurface
+                                  : const Color(0xFF1E293B),
+                            ),
+                          ),
+                          Text(
+                            type.replaceAll('_', ' ').toUpperCase(),
+                            style: TextStyle(
+                              color: color,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (mediaUrls.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.network(
+                      mediaUrls.first,
+                      height: 140,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        height: 72,
+                        alignment: Alignment.center,
+                        color: isDark
+                            ? const Color(0xFF1A1F1A)
+                            : const Color(0xFFF1F5F9),
+                        child: Text(
+                          _tr(
+                            en: 'Photo unavailable',
+                            id: 'Foto tidak tersedia',
+                            ms: 'Foto tidak tersedia',
+                            zh: '图片不可用',
+                          ),
+                          style: TextStyle(
+                            color: isDark ? scheme.onSurface : Colors.grey[700],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                if (description.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      color: isDark
+                          ? scheme.onSurface.withAlpha(200)
+                          : Colors.grey[700],
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    if (vulnerable)
+                      _reportChip(
+                        Icons.warning_amber_rounded,
+                        _tr(
+                          en: 'Needs help',
+                          id: 'Butuh bantuan',
+                          ms: 'Perlu bantuan',
+                          zh: '需要帮助',
+                        ),
+                        isDark ? const Color(0xFFFCA5A5) : Colors.red.shade700,
+                        isDark ? const Color(0xFF3E1D1D) : Colors.red.shade50,
+                      ),
+                    if (confidence != null)
+                      _reportChip(
+                        Icons.smart_toy_outlined,
+                        _tr(
+                          en: 'AI: ${(confidence * 100).toStringAsFixed(0)}% credible',
+                          id: 'AI: ${(confidence * 100).toStringAsFixed(0)}% kredibel',
+                          ms: 'AI: ${(confidence * 100).toStringAsFixed(0)}% dipercayai',
+                          zh: 'AI：可信度 ${(confidence * 100).toStringAsFixed(0)}%',
+                        ),
+                        confidence >= 0.7
+                            ? (isDark
+                                  ? const Color(0xFF86EFAC)
+                                  : Colors.green.shade700)
+                            : (isDark
+                                  ? const Color(0xFFFCD34D)
+                                  : Colors.amber.shade700),
+                        confidence >= 0.7
+                            ? (isDark
+                                  ? const Color(0xFF14532D)
+                                  : Colors.green.shade50)
+                            : (isDark
+                                  ? const Color(0xFF373018)
+                                  : Colors.amber.shade50),
+                      ),
+                    if (vouches > 0)
+                      _reportChip(
+                        Icons.thumb_up_alt_outlined,
+                        _vouchLabel(vouches),
+                        isDark ? const Color(0xFF93C5FD) : Colors.blue.shade700,
+                        isDark ? const Color(0xFF192A3A) : Colors.blue.shade50,
+                      ),
+                    _reportChip(
+                      Icons.verified,
                       _tr(
-                        en: 'Photo unavailable',
-                        id: 'Foto tidak tersedia',
-                        ms: 'Foto tidak tersedia',
-                        zh: '图片不可用',
+                        en: 'Verified',
+                        id: 'Terverifikasi',
+                        ms: 'Disahkan',
+                        zh: '已验证',
                       ),
-                      style: TextStyle(color: isDark ? scheme.onSurface : Colors.grey[700]),
+                      isDark ? const Color(0xFF4CAF50) : Colors.green.shade700,
+                      isDark ? const Color(0xFF1A2D1A) : Colors.green.shade50,
                     ),
-                  ),
+                  ],
                 ),
-              ),
-            ],
-            if (description.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                description,
-                style: TextStyle(
-                  color: isDark
-                      ? scheme.onSurface.withAlpha(200)
-                      : Colors.grey[700],
-                  fontSize: 13,
-                  height: 1.5,
-                ),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                if (vulnerable)
-                  _reportChip(
-                    Icons.warning_amber_rounded,
-                    _tr(
-                      en: 'Needs help',
-                      id: 'Butuh bantuan',
-                      ms: 'Perlu bantuan',
-                      zh: '需要帮助',
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: vouching
+                        ? null
+                        : () async {
+                            try {
+                              setSheetState(() => vouching = true);
+                              final updated = await _toggleReportVouch(
+                                sheetReport,
+                              );
+                              if (!ctx.mounted) return;
+                              setSheetState(() {
+                                sheetReport = updated;
+                                vouching = false;
+                              });
+                            } catch (e) {
+                              if (!ctx.mounted) return;
+                              setSheetState(() => vouching = false);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    e.toString().replaceFirst(
+                                      'Exception: ',
+                                      '',
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                    icon: vouching
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            userVouched
+                                ? Icons.thumb_up
+                                : Icons.thumb_up_alt_outlined,
+                          ),
+                    label: Text(
+                      userVouched
+                          ? _tr(
+                              en: 'Remove Vouch',
+                              id: 'Hapus verifikasi',
+                              ms: 'Buang sokongan',
+                              zh: '取消确认',
+                            )
+                          : _tr(
+                              en: 'Vouch This Report',
+                              id: 'Verifikasi laporan ini',
+                              ms: 'Sokong laporan ini',
+                              zh: '为此报告确认',
+                            ),
                     ),
-                    isDark ? const Color(0xFFFCA5A5) : Colors.red.shade700,
-                    isDark ? const Color(0xFF3E1D1D) : Colors.red.shade50,
                   ),
-                if (confidence != null)
-                  _reportChip(
-                    Icons.smart_toy_outlined,
-                    _tr(
-                      en: 'AI: ${(confidence * 100).toStringAsFixed(0)}% credible',
-                      id: 'AI: ${(confidence * 100).toStringAsFixed(0)}% kredibel',
-                      ms: 'AI: ${(confidence * 100).toStringAsFixed(0)}% dipercayai',
-                      zh: 'AI：可信度 ${(confidence * 100).toStringAsFixed(0)}%',
-                    ),
-                    confidence >= 0.7
-                        ? (isDark
-                              ? const Color(0xFF86EFAC)
-                              : Colors.green.shade700)
-                        : (isDark
-                              ? const Color(0xFFFCD34D)
-                              : Colors.amber.shade700),
-                    confidence >= 0.7
-                        ? (isDark
-                              ? const Color(0xFF14532D)
-                              : Colors.green.shade50)
-                        : (isDark
-                              ? const Color(0xFF373018)
-                              : Colors.amber.shade50),
-                  ),
-                if (vouches > 0)
-                  _reportChip(
-                    Icons.thumb_up_alt_outlined,
-                    _vouchLabel(vouches),
-                    isDark ? const Color(0xFF93C5FD) : Colors.blue.shade700,
-                    isDark ? const Color(0xFF192A3A) : Colors.blue.shade50,
-                  ),
-                _reportChip(
-                  Icons.verified,
-                  _tr(
-                    en: 'Verified',
-                    id: 'Terverifikasi',
-                    ms: 'Disahkan',
-                    zh: '已验证',
-                  ),
-                  isDark ? const Color(0xFF4CAF50) : Colors.green.shade700,
-                  isDark ? const Color(0xFF1A2D1A) : Colors.green.shade50,
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: vouching
-                    ? null
-                    : () async {
-                        try {
-                          setSheetState(() => vouching = true);
-                          final updated = await _toggleReportVouch(sheetReport);
-                          if (!ctx.mounted) return;
-                          setSheetState(() {
-                            sheetReport = updated;
-                            vouching = false;
-                          });
-                        } catch (e) {
-                          if (!ctx.mounted) return;
-                          setSheetState(() => vouching = false);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-                          );
-                        }
-                      },
-                icon: vouching
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(userVouched ? Icons.thumb_up : Icons.thumb_up_alt_outlined),
-                label: Text(
-                  userVouched
-                      ? _tr(en: 'Remove Vouch', id: 'Hapus verifikasi', ms: 'Buang sokongan', zh: '取消确认')
-                      : _tr(en: 'Vouch This Report', id: 'Verifikasi laporan ini', ms: 'Sokong laporan ini', zh: '为此报告确认'),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
+          );
         },
       ),
     );
