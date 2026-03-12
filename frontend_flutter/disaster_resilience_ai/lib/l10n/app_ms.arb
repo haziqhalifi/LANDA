@@ -1,0 +1,26 @@
+{
+  "@@locale": "ms",
+  "mapFilterFlood": "Banjir",
+  "mapFilterLandslide": "Tanah Runtuh",
+  "mapLegendTitle": "PETA BAHAYA",
+  "mapLegendFloodRiskZone": "Zon Risiko Banjir",
+  "mapLegendLandslideRiskZone": "Zon Risiko Tanah Runtuh",
+  "mapLoadingHazardZones": "Memuatkan zon bahaya...",
+  "mapRiskScoreLabel": "Skor Risiko: ",
+  "mapAreaRiskLabel": "Risiko Kawasan: ",
+  "mapRadiusKm": "Radius: {radius} km",
+  "@mapRadiusKm": {
+    "placeholders": {
+      "radius": {}
+    }
+  },
+  "mapAdminAreaBasis": "Berdasarkan {count} titik bahaya dipetakan dalam kawasan pentadbiran ini.",
+  "@mapAdminAreaBasis": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "mapHazardFlood": "Banjir",
+  "mapHazardLandslide": "Tanah Runtuh",
+  "mapHazardGeneric": "Bahaya"
+}

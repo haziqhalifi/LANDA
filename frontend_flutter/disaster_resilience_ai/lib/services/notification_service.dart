@@ -239,7 +239,11 @@ class NotificationService {
   }
 
   /// Fire a test emergency alert to verify call-style warning UX works.
-  Future<void> showTestNotification() async {
+  Future<void> showTestNotification({
+    String? title,
+    String? description,
+    String? source,
+  }) async {
     if (!_initialized) {
       throw StateError(
         'Notifications are not available on this platform or init() was not called.',
@@ -257,15 +261,16 @@ class NotificationService {
 
     final notifyResult = await _api.createWarning(
       accessToken: _accessToken!,
-      title: 'TEST ALERT: Flood Warning - Dengkil',
+      title: title ?? 'TEST ALERT: Flood Warning - Dengkil',
       description:
+          description ??
           'Real emergency test alert for Dengkil flood response. Proceed to safe high ground and review evacuation route now.',
       hazardType: 'flood',
       alertLevel: 'warning',
       latitude: dengkilLat,
       longitude: dengkilLon,
       radiusKm: 8.0,
-      source: 'Test Mode',
+      source: source ?? 'Test Mode',
     );
 
     final warningId = notifyResult['warning_id'] as String?;

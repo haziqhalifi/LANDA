@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(curl -s -X POST \"http://localhost:8000/api/v1/admin/register\" -H \"Content-Type: application/json\" -d '{\"\"username\"\":\"\"testadmin\"\",\"\"password\"\":\"\"test1234\"\"}')",
-      "Bash(curl -s \"http://localhost:8000/openapi.json\")",
-      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(k\\) for k in d[''paths''].keys\\(\\) if ''admin'' in k]\")"
-    ]
-  }
-}

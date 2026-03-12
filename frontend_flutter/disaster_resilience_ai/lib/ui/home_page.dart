@@ -1,8 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 
 import 'package:disaster_resilience_ai/models/warning_model.dart';
 import 'package:disaster_resilience_ai/models/prediction_result.dart';
@@ -12,12 +10,7 @@ import 'package:disaster_resilience_ai/services/api_service.dart';
 import 'package:disaster_resilience_ai/services/weather_service.dart';
 import 'package:disaster_resilience_ai/ui/auth_page.dart';
 import 'package:disaster_resilience_ai/ui/emergency_alert_page.dart';
-import 'package:disaster_resilience_ai/ui/submit_report_page.dart';
-import 'package:disaster_resilience_ai/ui/personal_preparedness_page.dart';
-import 'package:disaster_resilience_ai/ui/safe_routes_page.dart';
-import 'package:disaster_resilience_ai/ui/school_preparedness_page.dart';
 import 'package:disaster_resilience_ai/ui/emergency_contacts_page.dart';
-import 'package:disaster_resilience_ai/ui/family_checkin_page.dart';
 import 'package:disaster_resilience_ai/ui/reports_tab.dart';
 import 'package:disaster_resilience_ai/ui/map_tab.dart';
 import 'package:disaster_resilience_ai/ui/profile_tab.dart';
@@ -25,6 +18,7 @@ import 'package:disaster_resilience_ai/ui/weather_page.dart';
 import 'package:disaster_resilience_ai/ui/chatbot_page.dart';
 import 'package:disaster_resilience_ai/ui/disaster_checklist_page.dart';
 import 'package:disaster_resilience_ai/ui/learn_page.dart';
+import 'package:disaster_resilience_ai/ui/safe_routes_page.dart';
 import 'package:disaster_resilience_ai/models/disaster_news_model.dart';
 import 'package:disaster_resilience_ai/ui/all_warnings_page.dart';
 import 'package:disaster_resilience_ai/ui/all_news_page.dart';
@@ -32,6 +26,8 @@ import 'package:disaster_resilience_ai/ui/widgets/landa_wordmark.dart';
 import 'package:disaster_resilience_ai/services/notification_service.dart';
 import 'package:disaster_resilience_ai/ui/incoming_alert_page.dart';
 import 'package:disaster_resilience_ai/ui/siren_management_page.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
@@ -52,6 +48,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
+  final ScrollController _homeScrollController = ScrollController();
 
   final ApiService _api = ApiService();
   final WeatherService _weatherService = WeatherService();
@@ -78,10 +75,16 @@ class _HomePageState extends State<HomePage> {
 
   bool get _isMalay =>
       AppLanguageScope.of(context).language == AppLanguage.malay;
+  bool get _isIndonesian =>
+      AppLanguageScope.of(context).language == AppLanguage.indonesian;
   bool get _isChinese =>
       AppLanguageScope.of(context).language == AppLanguage.chinese;
 
   String _tr({required String en, required String ms, String? zh}) {
+    if (_isIndonesian) {
+      final id = indonesianText(en);
+      return id == en ? ms : id;
+    }
     if (_isMalay) return ms;
     if (_isChinese) return zh ?? en;
     return en;
@@ -96,6 +99,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _liveLocationTimer?.cancel();
+    _homeScrollController.dispose();
     super.dispose();
   }
 
@@ -382,6 +386,7 @@ class _HomePageState extends State<HomePage> {
       },
       color: Theme.of(context).colorScheme.primary,
       child: SingleChildScrollView(
+        controller: _homeScrollController,
         physics: const AlwaysScrollableScrollPhysics(),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
@@ -442,21 +447,24 @@ class _HomePageState extends State<HomePage> {
       safetyColor = const Color(0xFF2D5927);
       safetyIcon = Icons.check_circle_rounded;
     } else {
-      safetyLabel = _highestAlertLevel.displayName;
       switch (_highestAlertLevel) {
         case AlertLevel.advisory:
+          safetyLabel = _tr(en: 'Advisory', ms: 'Nasihat', zh: '建议');
           safetyColor = const Color(0xFF2563EB);
           safetyIcon = Icons.info_outline;
           break;
         case AlertLevel.observe:
+          safetyLabel = _tr(en: 'Observe', ms: 'Perhati', zh: '观察');
           safetyColor = const Color(0xFFD97706);
           safetyIcon = Icons.visibility_outlined;
           break;
         case AlertLevel.warning:
+          safetyLabel = _tr(en: 'Warning', ms: 'Amaran', zh: '警告');
           safetyColor = const Color(0xFFEA580C);
           safetyIcon = Icons.warning_amber_rounded;
           break;
         case AlertLevel.evacuate:
+          safetyLabel = _tr(en: 'Evacuate', ms: 'Pindah', zh: '撤离');
           safetyColor = const Color(0xFFDC2626);
           safetyIcon = Icons.directions_run;
           break;
@@ -1164,7 +1172,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             _buildPrimaryActionChip(
-              icon: Icons.menu_book,
+              icon: Icons.school_outlined,
               label: _tr(en: 'Learn', ms: 'Belajar', zh: '学习'),
               onPressed: () => Navigator.push(
                 context,
@@ -1172,7 +1180,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             _buildPrimaryActionChip(
-              icon: Icons.call,
+              icon: Icons.local_phone_outlined,
               label: _tr(en: 'SOS', ms: 'SOS', zh: '求助'),
               onPressed: () => Navigator.push(
                 context,
@@ -1466,6 +1474,56 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Widget _buildTopBarTitle(bool isDark) {
+    if (_selectedIndex == 0) {
+      return LandaWordmark(
+        fontSize: 24,
+        colors: isDark
+            ? const [Color(0xFF9EDB94), Color(0xFFE3F3DF)]
+            : const [Color(0xFF163A12), Color(0xFF2D5927)],
+        letterSpacing: 1.0,
+        strokeColor: isDark
+            ? const Color(0x4D86C77C)
+            : const Color(0x991B3516),
+        strokeWidth: 0.9,
+        withShadow: false,
+        textAlign: TextAlign.left,
+      );
+    }
+
+    String title;
+    switch (_selectedIndex) {
+      case 1:
+        title = _tr(en: 'Reports', ms: 'Laporan', zh: '报告');
+      case 2:
+        title = _tr(en: 'Map', ms: 'Peta', zh: '地图');
+      case 3:
+        title = _tr(en: 'Profile', ms: 'Profil', zh: '个人');
+      case 4:
+        title = _tr(en: 'Admin', ms: 'Admin', zh: '管理');
+      default:
+        title = _tr(en: 'Home', ms: 'Laman', zh: '主页');
+    }
+
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        color: isDark ? const Color(0xFFE5E7EB) : const Color(0xFF111827),
+      ),
+    );
+  }
+
+  void _scrollHomeToTop() {
+    if (!_homeScrollController.hasClients) return;
+    _homeScrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   NavigationDestination _buildNavDestination({
     required String label,
     required IconData icon,
@@ -1546,71 +1604,39 @@ class _HomePageState extends State<HomePage> {
         centerTitle: true,
         titleSpacing: 0,
         toolbarHeight: 64,
-        title: LandaBrandTitle(
-          wordmarkSize: 24,
-          iconColor: isDark ? const Color(0xFF86C77C) : const Color(0xFF2D5927),
-          wordmarkColors: isDark
-              ? const [Color(0xFF9EDB94), Color(0xFFE3F3DF)]
-              : const [Color(0xFF163A12), Color(0xFF2D5927)],
-          wordmarkStrokeColor: isDark
-              ? const Color(0x4D86C77C)
-              : const Color(0x991B3516),
-        ),
+        title: _buildTopBarTitle(isDark),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(height: 1, color: borderColor),
         ),
         actions: [
-          IconButton(
-            tooltip: _tr(en: 'Warnings', ms: 'Amaran', zh: '警报'),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => AllWarningsPage(warnings: _allActiveWarnings),
-              ),
-            ),
-            icon: Stack(
-              children: [
-                const Icon(Icons.notifications_none_rounded),
-                if (_nearbyWarnings.isNotEmpty)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.redAccent,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
           Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: CircleAvatar(
-              backgroundColor: const Color(0xFFE8F5E9),
-              child: IconButton(
-                icon: const Icon(
-                  Icons.person_outline,
-                  color: Color(0xFF2E7D32),
+            padding: const EdgeInsets.only(right: 12),
+            child: IconButton(
+              tooltip: _tr(en: 'Warnings', ms: 'Amaran', zh: '警报'),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AllWarningsPage(warnings: _allActiveWarnings),
                 ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ProfileTab(
-                        accessToken: widget.accessToken,
-                        username: widget.username,
-                        email: widget.email,
-                        onLogout: _logout,
+              ),
+              icon: Stack(
+                children: [
+                  const Icon(Icons.notifications_none_rounded),
+                  if (_nearbyWarnings.isNotEmpty)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Colors.redAccent,
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
-                  );
-                },
+                ],
               ),
             ),
           ),
@@ -1641,8 +1667,20 @@ class _HomePageState extends State<HomePage> {
         ),
         child: NavigationBar(
           selectedIndex: _selectedIndex,
-          onDestinationSelected: (index) =>
-              setState(() => _selectedIndex = index),
+          onDestinationSelected: (index) {
+            if (index == 0) {
+              if (_selectedIndex == 0) {
+                _scrollHomeToTop();
+                return;
+              }
+              setState(() => _selectedIndex = 0);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _scrollHomeToTop();
+              });
+              return;
+            }
+            setState(() => _selectedIndex = index);
+          },
           backgroundColor: barBg,
           labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
           indicatorColor: Colors.transparent,

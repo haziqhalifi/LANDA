@@ -25,8 +25,5 @@ PyJWT>=2.8.0
 # Twilio SMS (mock-safe — only used if credentials supplied)
 twilio>=8.10.0
 
-# Form data parsing (required for SMS webhook endpoint + file uploads)
+# Form data parsing (required for SMS webhook endpoint)
 python-multipart>=0.0.9
-
-# Anthropic Claude API for AI report analysis
-anthropic>=0.30.0

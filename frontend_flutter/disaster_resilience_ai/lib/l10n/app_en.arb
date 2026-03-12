@@ -1,0 +1,26 @@
+{
+  "@@locale": "en",
+  "mapFilterFlood": "Flood",
+  "mapFilterLandslide": "Landslide",
+  "mapLegendTitle": "HAZARD MAP",
+  "mapLegendFloodRiskZone": "Flood Risk Zone",
+  "mapLegendLandslideRiskZone": "Landslide Risk Zone",
+  "mapLoadingHazardZones": "Loading hazard zones...",
+  "mapRiskScoreLabel": "Risk Score: ",
+  "mapAreaRiskLabel": "Area Risk: ",
+  "mapRadiusKm": "Radius: {radius} km",
+  "@mapRadiusKm": {
+    "placeholders": {
+      "radius": {}
+    }
+  },
+  "mapAdminAreaBasis": "Based on {count} mapped hazard point(s) inside this administrative area.",
+  "@mapAdminAreaBasis": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "mapHazardFlood": "Flood",
+  "mapHazardLandslide": "Landslide",
+  "mapHazardGeneric": "Hazard"
+}

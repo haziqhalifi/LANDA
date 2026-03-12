@@ -46,14 +46,63 @@ class AppThemeScope extends InheritedNotifier<AppThemeController> {
 
 class AppThemes {
   static const Color _seed = Color(0xFF2D5927);
+  static const String _appFontFamily = 'Roboto';
+
+  static TextTheme _baseTextTheme(TextTheme base) {
+    return base.copyWith(
+      headlineSmall: const TextStyle(
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        height: 1.2,
+      ),
+      titleLarge: const TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        height: 1.2,
+      ),
+      titleMedium: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
+        height: 1.25,
+      ),
+      bodyLarge: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w400,
+        height: 1.35,
+      ),
+      bodyMedium: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w400,
+        height: 1.35,
+      ),
+      labelLarge: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+        height: 1.2,
+      ),
+      labelMedium: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        height: 1.2,
+      ),
+      labelSmall: const TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w600,
+        height: 1.2,
+      ),
+    );
+  }
 
   static ThemeData lightTheme() {
     final scheme = ColorScheme.fromSeed(
       seedColor: _seed,
       brightness: Brightness.light,
     );
+    final textTheme = _baseTextTheme(ThemeData.light().textTheme);
     return ThemeData(
       useMaterial3: true,
+      fontFamily: _appFontFamily,
+      textTheme: textTheme,
       colorScheme: scheme,
       scaffoldBackgroundColor: const Color(0xFFF0F2F5),
       appBarTheme: AppBarTheme(
@@ -61,6 +110,7 @@ class AppThemes {
         foregroundColor: scheme.onSurface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
+        titleTextStyle: textTheme.titleLarge?.copyWith(color: scheme.onSurface),
       ),
       cardTheme: CardThemeData(
         color: Colors.white,
@@ -91,8 +141,11 @@ class AppThemes {
       seedColor: _seed,
       brightness: Brightness.dark,
     );
+    final textTheme = _baseTextTheme(ThemeData.dark().textTheme);
     return ThemeData(
       useMaterial3: true,
+      fontFamily: _appFontFamily,
+      textTheme: textTheme,
       colorScheme: scheme,
       scaffoldBackgroundColor: const Color(0xFF0F140F),
       appBarTheme: AppBarTheme(
@@ -100,6 +153,7 @@ class AppThemes {
         foregroundColor: scheme.onSurface,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
+        titleTextStyle: textTheme.titleLarge?.copyWith(color: scheme.onSurface),
       ),
       cardTheme: CardThemeData(
         color: const Color(0xFF1B251B),

@@ -1,4 +1,5 @@
 import 'package:disaster_resilience_ai/localization/app_language.dart';
+import 'package:disaster_resilience_ai/l10n/app_localizations.dart';
 import 'package:disaster_resilience_ai/models/warning_model.dart';
 import 'package:disaster_resilience_ai/services/notification_service.dart';
 import 'package:disaster_resilience_ai/theme/app_theme.dart';
@@ -6,6 +7,7 @@ import 'package:disaster_resilience_ai/ui/auth_page.dart';
 import 'package:disaster_resilience_ai/ui/emergency_alert_page.dart';
 import 'package:disaster_resilience_ai/ui/incoming_alert_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 /// Global navigator key so services can push routes from anywhere.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -85,6 +87,14 @@ class _DisasterResilienceAppState extends State<DisasterResilienceApp> {
               theme: AppThemes.lightTheme(),
               darkTheme: AppThemes.darkTheme(),
               themeMode: _themeController.themeMode,
+              locale: _languageController.locale,
+              localizationsDelegates: const [
+                AppLocalizations.delegate,
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              supportedLocales: AppLocalizations.supportedLocales,
               home: const AuthPage(),
             );
           },

@@ -90,6 +90,7 @@ class LandaBrandTitle extends StatelessWidget {
   const LandaBrandTitle({
     super.key,
     this.icon = Icons.radar_rounded,
+    this.logoAssetPath,
     this.iconColor = const Color(0xFF2D5927),
     this.wordmarkSize = 28,
     this.wordmarkColors = const [Color(0xFF163A12), Color(0xFF2D5927)],
@@ -97,6 +98,7 @@ class LandaBrandTitle extends StatelessWidget {
   });
 
   final IconData icon;
+  final String? logoAssetPath;
   final Color iconColor;
   final double wordmarkSize;
   final List<Color> wordmarkColors;
@@ -107,16 +109,31 @@ class LandaBrandTitle extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: iconColor, size: wordmarkSize),
+        if (logoAssetPath != null)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Image.asset(
+              logoAssetPath!,
+              width: wordmarkSize,
+              height: wordmarkSize,
+              fit: BoxFit.cover,
+              errorBuilder: (_, error, stackTrace) =>
+                  Icon(icon, color: iconColor, size: wordmarkSize),
+            ),
+          )
+        else
+          Icon(icon, color: iconColor, size: wordmarkSize),
         const SizedBox(width: 8),
-        LandaWordmark(
-          fontSize: wordmarkSize,
-          colors: wordmarkColors,
-          letterSpacing: 1.0,
-          strokeColor: wordmarkStrokeColor,
-          strokeWidth: 0.9,
-          withShadow: false,
-          textAlign: TextAlign.left,
+        Flexible(
+          child: LandaWordmark(
+            fontSize: wordmarkSize,
+            colors: wordmarkColors,
+            letterSpacing: 1.0,
+            strokeColor: wordmarkStrokeColor,
+            strokeWidth: 0.9,
+            withShadow: false,
+            textAlign: TextAlign.left,
+          ),
         ),
       ],
     );

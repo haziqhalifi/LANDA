@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:disaster_resilience_ai/models/profile_model.dart';
 import 'package:disaster_resilience_ai/localization/app_language.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
 import 'package:disaster_resilience_ai/theme/app_theme.dart';
 import 'package:disaster_resilience_ai/services/notification_service.dart';
+import 'package:disaster_resilience_ai/services/weather_service.dart';
 import 'package:disaster_resilience_ai/ui/edit_profile_page.dart';
 import 'package:disaster_resilience_ai/ui/family_tab.dart';
 
@@ -27,17 +30,28 @@ class ProfileTab extends StatefulWidget {
 
 class _ProfileTabState extends State<ProfileTab> {
   final ApiService _api = ApiService();
+  final WeatherService _weatherService = WeatherService();
   UserProfile? _profile;
   bool _loading = true;
   String? _error;
   bool _notificationsEnabled = true;
   String? _savedPhone; // phone stored in devices table
+  String _locationLabel = 'Locating...';
+  double _preparednessProgress = 0.0;
+
+  static const List<String> _checklistIds = [
+    'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7',
+    'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7',
+    'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7',
+  ];
 
   @override
   void initState() {
     super.initState();
     _fetchProfile();
     _fetchSavedPhone();
+    _fetchCurrentLocation();
+    _loadPreparedness();
   }
 
   Future<void> _fetchSavedPhone() async {
@@ -83,7 +97,6 @@ class _ProfileTabState extends State<ProfileTab> {
     );
     ctrl.dispose();
     if (saved == null || saved.isEmpty) return;
-    // Normalise: 0175815030 → +60175815030
     String phone = saved;
     if (phone.startsWith('0')) phone = '+60${phone.substring(1)}';
     if (!phone.startsWith('+')) phone = '+$phone';
@@ -108,19 +121,67 @@ class _ProfileTabState extends State<ProfileTab> {
     }
   }
 
+  Future<void> _loadPreparedness() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final done = _checklistIds
+          .where((id) => prefs.getBool('checklist_$id') ?? false)
+          .length;
+      final total = _checklistIds.length;
+      final progress = total == 0 ? 0.0 : done / total;
+      if (!mounted) return;
+      setState(() {
+        _preparednessProgress = progress.clamp(0.0, 1.0);
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _fetchCurrentLocation() async {
+    double lat = 3.8077;
+    double lon = 103.3260;
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse) {
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+        );
+        lat = pos.latitude;
+        lon = pos.longitude;
+      }
+      final place = await _weatherService.fetchLocationName(latitude: lat, longitude: lon);
+      if (!mounted) return;
+      setState(() {
+        _locationLabel = (place != null && place.isNotEmpty)
+            ? place
+            : 'Near ${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() { _locationLabel = 'Location unavailable'; });
+    }
+  }
+
   Future<void> _selectLanguage() async {
     final languageController = AppLanguageScope.of(context);
-    final selectedLanguage = languageController.label;
+    final selectedLanguage = languageController.language;
     final currentLanguage = languageController.language;
     String tr({required String en, required String ms, required String zh}) {
       return switch (currentLanguage) {
         AppLanguage.english => en,
+        AppLanguage.indonesian => (() {
+          final id = indonesianText(en);
+          return id == en ? ms : id;
+        })(),
         AppLanguage.malay => ms,
         AppLanguage.chinese => zh,
       };
     }
 
-    final selected = await showModalBottomSheet<String>(
+    final selected = await showModalBottomSheet<AppLanguage>(
       context: context,
       showDragHandle: true,
       builder: (context) {
@@ -132,8 +193,8 @@ class _ProfileTabState extends State<ProfileTab> {
             ? const Color(0xFFD1D5DB)
             : const Color(0xFF475569);
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: ListView(
+            shrinkWrap: true,
             children: [
               ListTile(
                 title: Text(
@@ -141,51 +202,23 @@ class _ProfileTabState extends State<ProfileTab> {
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
-              ListTile(
-                title: const Text('English'),
-                subtitle: Text(
-                  tr(
-                    en: 'Use English across the app',
-                    ms: 'Guna bahasa Inggeris dalam aplikasi',
-                    zh: '在整个应用中使用英语',
+              ...AppLanguage.values.map((lang) {
+                return ListTile(
+                  title: Text(lang.displayLabel),
+                  subtitle: Text(
+                    tr(
+                      en: 'Use this language across the app',
+                      ms: 'Guna bahasa ini dalam aplikasi',
+                      zh: '在整个应用中使用此语言',
+                    ),
+                    style: TextStyle(color: subtitleColor),
                   ),
-                  style: TextStyle(color: subtitleColor),
-                ),
-                trailing: selectedLanguage == 'English'
-                    ? Icon(Icons.check, color: checkColor)
-                    : null,
-                onTap: () => Navigator.pop(context, 'English'),
-              ),
-              ListTile(
-                title: const Text('Bahasa Melayu'),
-                subtitle: Text(
-                  tr(
-                    en: 'Use Bahasa Melayu across the app',
-                    ms: 'Guna Bahasa Melayu dalam aplikasi',
-                    zh: '在整个应用中使用马来语',
-                  ),
-                  style: TextStyle(color: subtitleColor),
-                ),
-                trailing: selectedLanguage == 'Bahasa Melayu'
-                    ? Icon(Icons.check, color: checkColor)
-                    : null,
-                onTap: () => Navigator.pop(context, 'Bahasa Melayu'),
-              ),
-              ListTile(
-                title: const Text('Chinese (Mandarin)'),
-                subtitle: Text(
-                  tr(
-                    en: 'Use Mandarin Chinese across the app',
-                    ms: 'Guna Bahasa Cina Mandarin dalam aplikasi',
-                    zh: '在整个应用中使用普通话',
-                  ),
-                  style: TextStyle(color: subtitleColor),
-                ),
-                trailing: selectedLanguage == 'Chinese (Mandarin)'
-                    ? Icon(Icons.check, color: checkColor)
-                    : null,
-                onTap: () => Navigator.pop(context, 'Chinese (Mandarin)'),
-              ),
+                  trailing: selectedLanguage == lang
+                      ? Icon(Icons.check, color: checkColor)
+                      : null,
+                  onTap: () => Navigator.pop(context, lang),
+                );
+              }),
               const SizedBox(height: 8),
             ],
           ),
@@ -194,15 +227,7 @@ class _ProfileTabState extends State<ProfileTab> {
     );
 
     if (selected == null || selected == selectedLanguage) return;
-    if (selected == 'Bahasa Melayu') {
-      await languageController.setLanguage(AppLanguage.malay);
-      return;
-    }
-    if (selected == 'Chinese (Mandarin)') {
-      await languageController.setLanguage(AppLanguage.chinese);
-      return;
-    }
-    await languageController.setLanguage(AppLanguage.english);
+    await languageController.setLanguage(selected);
   }
 
   Future<void> _fetchProfile() async {
@@ -245,6 +270,367 @@ class _ProfileTabState extends State<ProfileTab> {
     }
   }
 
+  Future<void> _showCommunityCenterForm() async {
+    final centerNameController = TextEditingController();
+    final addressController = TextEditingController();
+    final phoneController = TextEditingController();
+    final notesController = TextEditingController();
+
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (ctx) {
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+          final textColor = isDark
+              ? const Color(0xFFE5E7EB)
+              : const Color(0xFF111827);
+          final borderColor = isDark
+              ? const Color(0xFF334236)
+              : const Color(0xFFE2E8F0);
+          final fillColor = isDark
+              ? const Color(0xFF1B251B)
+              : const Color(0xFFF8FAFC);
+
+          InputDecoration deco(String hint) => InputDecoration(
+            hintText: hint,
+            filled: true,
+            fillColor: fillColor,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: borderColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFF2D5927)),
+            ),
+          );
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              8,
+              16,
+              MediaQuery.of(ctx).viewInsets.bottom + 16,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppLanguageScope.tr(
+                      ctx,
+                      en: 'Local Community Center',
+                      ms: 'Pusat Komuniti Setempat',
+                      zh: '本地社区中心',
+                    ),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: textColor,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: centerNameController,
+                    style: TextStyle(color: textColor),
+                    decoration: deco(
+                      AppLanguageScope.tr(
+                        ctx,
+                        en: 'Center name',
+                        ms: 'Nama pusat',
+                        zh: '中心名称',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: addressController,
+                    style: TextStyle(color: textColor),
+                    maxLines: 2,
+                    decoration: deco(
+                      AppLanguageScope.tr(
+                        ctx,
+                        en: 'Address',
+                        ms: 'Alamat',
+                        zh: '地址',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: phoneController,
+                    style: TextStyle(color: textColor),
+                    keyboardType: TextInputType.phone,
+                    decoration: deco(
+                      AppLanguageScope.tr(
+                        ctx,
+                        en: 'Contact phone',
+                        ms: 'Telefon untuk dihubungi',
+                        zh: '联系电话',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: notesController,
+                    style: TextStyle(color: textColor),
+                    maxLines: 3,
+                    decoration: deco(
+                      AppLanguageScope.tr(
+                        ctx,
+                        en: 'Notes (optional)',
+                        ms: 'Nota (pilihan)',
+                        zh: '备注（可选）',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              AppLanguageScope.tr(
+                                context,
+                                en: 'Saved locally (not synced to backend yet).',
+                                ms: 'Disimpan secara tempatan (belum disegerak ke backend).',
+                                zh: '已在本地保存（尚未同步到后端）。',
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.save_outlined),
+                      label: Text(
+                        AppLanguageScope.tr(
+                          ctx,
+                          en: 'Save',
+                          ms: 'Simpan',
+                          zh: '保存',
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    } finally {
+      centerNameController.dispose();
+      addressController.dispose();
+      phoneController.dispose();
+      notesController.dispose();
+    }
+  }
+
+  Future<void> _showEmergencyContactForm() async {
+    final nameController = TextEditingController(
+      text: _profile?.emergencyContactName ?? '',
+    );
+    final relationController = TextEditingController(
+      text: _profile?.emergencyContactRelationship ?? '',
+    );
+    final phoneController = TextEditingController(
+      text: _profile?.emergencyContactPhone ?? '',
+    );
+    bool saving = false;
+
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (ctx) {
+          final isDark = Theme.of(ctx).brightness == Brightness.dark;
+          final textColor = isDark
+              ? const Color(0xFFE5E7EB)
+              : const Color(0xFF111827);
+          final borderColor = isDark
+              ? const Color(0xFF334236)
+              : const Color(0xFFE2E8F0);
+          final fillColor = isDark
+              ? const Color(0xFF1B251B)
+              : const Color(0xFFF8FAFC);
+
+          InputDecoration deco(String hint, IconData icon) => InputDecoration(
+            hintText: hint,
+            prefixIcon: Icon(icon, color: const Color(0xFF2D5927)),
+            filled: true,
+            fillColor: fillColor,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: borderColor),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFF2D5927)),
+            ),
+          );
+
+          return StatefulBuilder(
+            builder: (context, setSheetState) => Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                8,
+                16,
+                MediaQuery.of(ctx).viewInsets.bottom + 16,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppLanguageScope.tr(
+                        ctx,
+                        en: 'Emergency Contact',
+                        ms: 'Kenalan Kecemasan',
+                        zh: '紧急联系人',
+                      ),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: textColor,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: nameController,
+                      style: TextStyle(color: textColor),
+                      decoration: deco(
+                        AppLanguageScope.tr(
+                          ctx,
+                          en: 'Contact name',
+                          ms: 'Nama kenalan',
+                          zh: '联系人姓名',
+                        ),
+                        Icons.person_outline,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: relationController,
+                      style: TextStyle(color: textColor),
+                      decoration: deco(
+                        AppLanguageScope.tr(
+                          ctx,
+                          en: 'Relationship',
+                          ms: 'Hubungan',
+                          zh: '关系',
+                        ),
+                        Icons.people_outline,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: phoneController,
+                      keyboardType: TextInputType.phone,
+                      style: TextStyle(color: textColor),
+                      decoration: deco(
+                        AppLanguageScope.tr(
+                          ctx,
+                          en: 'Contact phone',
+                          ms: 'Telefon kenalan',
+                          zh: '联系电话',
+                        ),
+                        Icons.phone_outlined,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                setSheetState(() => saving = true);
+                                try {
+                                  await _api.updateProfile(
+                                    accessToken: widget.accessToken,
+                                    profileData: {
+                                      'emergency_contact_name': nameController
+                                          .text
+                                          .trim(),
+                                      'emergency_contact_relationship':
+                                          relationController.text.trim(),
+                                      'emergency_contact_phone': phoneController
+                                          .text
+                                          .trim(),
+                                    },
+                                  );
+                                  if (!mounted) return;
+                                  Navigator.pop(ctx);
+                                  await _fetchProfile();
+                                  if (!mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        AppLanguageScope.tr(
+                                          context,
+                                          en: 'Emergency contact updated successfully.',
+                                          ms: 'Kenalan kecemasan berjaya dikemas kini.',
+                                          zh: '紧急联系人更新成功。',
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                } catch (e) {
+                                  if (!mounted) return;
+                                  setSheetState(() => saving = false);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        AppLanguageScope.tr(
+                                          context,
+                                          en: 'Unable to update emergency contact: $e',
+                                          ms: 'Tidak dapat mengemas kini kenalan kecemasan: $e',
+                                          zh: '无法更新紧急联系人：$e',
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                        icon: saving
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.save_outlined),
+                        label: Text(
+                          AppLanguageScope.tr(
+                            ctx,
+                            en: 'Save Contact',
+                            ms: 'Simpan Kenalan',
+                            zh: '保存联系人',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    } finally {
+      nameController.dispose();
+      relationController.dispose();
+      phoneController.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const Color primary = Color(0xFF2D5927);
@@ -255,6 +641,10 @@ class _ProfileTabState extends State<ProfileTab> {
     String tr({required String en, required String ms, required String zh}) {
       return switch (language) {
         AppLanguage.english => en,
+        AppLanguage.indonesian => (() {
+          final id = indonesianText(en);
+          return id == en ? ms : id;
+        })(),
         AppLanguage.malay => ms,
         AppLanguage.chinese => zh,
       };
@@ -272,6 +662,30 @@ class _ProfileTabState extends State<ProfileTab> {
         : const Color(0xFF64748B);
     final tertiaryText = isDark
         ? const Color(0xFF8A9A8B)
+        : const Color(0xFF94A3B8);
+    final locationAccent = isDark
+        ? const Color(0xFF9EDB94)
+        : primary;
+    final idChipBg = isDark
+        ? const Color(0xFF2D5927).withAlpha(72)
+        : primary.withAlpha(22);
+    final editButtonColor = isDark
+        ? const Color(0xFF9EDB94)
+        : primary;
+    final editButtonBg = isDark
+        ? const Color(0xFF2D5927).withAlpha(56)
+        : primary.withAlpha(14);
+    final switchActiveTrack = isDark
+        ? const Color(0xFF3E7041)
+        : primary.withAlpha(120);
+    final switchActiveThumb = isDark
+        ? const Color(0xFFBEEAB6)
+        : primary;
+    final switchInactiveTrack = isDark
+        ? const Color(0xFF3A463A)
+        : const Color(0xFFE2E8F0);
+    final switchInactiveThumb = isDark
+        ? const Color(0xFF8FA08F)
         : const Color(0xFF94A3B8);
 
     if (_loading) {
@@ -325,7 +739,10 @@ class _ProfileTabState extends State<ProfileTab> {
       if (profile.emergencyContactPhone?.isNotEmpty == true)
         profile.emergencyContactPhone!,
     ].join(' • ');
-    final resilienceId =
+    final preparednessDone = (_preparednessProgress * _checklistIds.length)
+        .round();
+    final preparednessPercent = (_preparednessProgress * 100).round();
+    final landaId =
         'RAI-${profile.userId.replaceAll(RegExp(r'[^0-9A-Za-z]'), '').toUpperCase().padLeft(4, '0').substring(0, 4)}';
 
     return Scaffold(
@@ -399,15 +816,24 @@ class _ProfileTabState extends State<ProfileTab> {
                   const SizedBox(height: 4),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Icon(Icons.location_on, size: 15, color: primary),
-                      SizedBox(width: 4),
-                      Text(
-                        'Dengkil, Selangor',
-                        style: TextStyle(
-                          color: primary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                    children: [
+                      Icon(
+                        Icons.location_on,
+                        size: 15,
+                        color: locationAccent,
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          _locationLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: locationAccent,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
@@ -419,13 +845,13 @@ class _ProfileTabState extends State<ProfileTab> {
                       vertical: 7,
                     ),
                     decoration: BoxDecoration(
-                      color: primary.withAlpha(22),
+                      color: idChipBg,
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
-                      'Resilience ID: $resilienceId',
-                      style: const TextStyle(
-                        color: primary,
+                      'LANDA ID: $landaId',
+                      style: TextStyle(
+                        color: locationAccent,
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.4,
@@ -479,19 +905,35 @@ class _ProfileTabState extends State<ProfileTab> {
                           ],
                         ),
                         const SizedBox(height: 6),
-                        const Text(
-                          '85%',
-                          style: TextStyle(
+                        Text(
+                          '$preparednessPercent%',
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 26,
                             fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          tr(
+                            en:
+                                '$preparednessDone/${_checklistIds.length} completed',
+                            ms:
+                                '$preparednessDone/${_checklistIds.length} selesai',
+                            zh:
+                                '已完成 $preparednessDone/${_checklistIds.length}',
+                          ),
+                          style: const TextStyle(
+                            color: Color(0xCCE8F5E9),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 8),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(999),
                           child: LinearProgressIndicator(
-                            value: 0.85,
+                            value: _preparednessProgress,
                             minHeight: 5,
                             color: Colors.white,
                             backgroundColor: Colors.white24,
@@ -555,7 +997,7 @@ class _ProfileTabState extends State<ProfileTab> {
                                   ms: 'Tambah kenalan kecemasan',
                                   zh: '添加紧急联系人',
                                 ),
-                          style: TextStyle(color: tertiaryText, fontSize: 10.5),
+                          style: TextStyle(color: tertiaryText, fontSize: 11),
                         ),
                       ],
                     ),
@@ -573,22 +1015,37 @@ class _ProfileTabState extends State<ProfileTab> {
                     zh: '紧急联系人',
                   ),
                   style: const TextStyle(
-                    fontSize: 17,
+                    fontSize: 18,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: _editProfile,
-                  icon: const Icon(Icons.add, size: 16),
+                  icon: Icon(
+                    Icons.edit_outlined,
+                    size: 16,
+                    color: editButtonColor,
+                  ),
                   label: Text(
-                    tr(en: 'Add New', ms: 'Tambah Baharu', zh: '新增'),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    tr(
+                      en: 'Edit Profile',
+                      ms: 'Sunting Profil',
+                      zh: '编辑个人资料',
+                    ),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: editButtonColor,
+                    ),
                   ),
                   style: TextButton.styleFrom(
-                    foregroundColor: primary,
+                    foregroundColor: editButtonColor,
+                    backgroundColor: editButtonBg,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     visualDensity: VisualDensity.compact,
                   ),
                 ),
@@ -610,11 +1067,16 @@ class _ProfileTabState extends State<ProfileTab> {
               border: border,
               secondaryText: secondaryText,
               tertiaryText: tertiaryText,
+              onTap: _showEmergencyContactForm,
             ),
             const SizedBox(height: 10),
             _buildContactTile(
               icon: Icons.health_and_safety,
-              title: 'Local Community Center',
+              title: tr(
+                en: 'Local Community Center',
+                ms: 'Pusat Komuniti Tempatan',
+                zh: '本地社区中心',
+              ),
               subtitle: tr(
                 en: 'Medical support • Emergency line',
                 ms: 'Sokongan perubatan • Talian kecemasan',
@@ -625,13 +1087,14 @@ class _ProfileTabState extends State<ProfileTab> {
               border: border,
               secondaryText: secondaryText,
               tertiaryText: tertiaryText,
+              onTap: _showCommunityCenterForm,
             ),
             const SizedBox(height: 14),
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
                 tr(en: 'Settings', ms: 'Tetapan', zh: '设置'),
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               ),
             ),
             const SizedBox(height: 8),
@@ -656,9 +1119,10 @@ class _ProfileTabState extends State<ProfileTab> {
                 value: _notificationsEnabled,
                 onChanged: (value) =>
                     setState(() => _notificationsEnabled = value),
-                thumbColor: WidgetStateProperty.all(primary),
-                trackColor: WidgetStateProperty.resolveWith((states) =>
-                  states.contains(WidgetState.selected) ? primary.withAlpha(120) : null),
+                activeTrackColor: switchActiveTrack,
+                activeThumbColor: switchActiveThumb,
+                inactiveTrackColor: switchInactiveTrack,
+                inactiveThumbColor: switchInactiveThumb,
               ),
             ),
             _buildSettingItem(
@@ -671,7 +1135,19 @@ class _ProfileTabState extends State<ProfileTab> {
               ),
               onTap: () async {
                 try {
-                  await NotificationService.instance.showTestNotification();
+                  await NotificationService.instance.showTestNotification(
+                    title: tr(
+                      en: 'TEST ALERT: Flood Warning - Dengkil',
+                      ms: 'AMARAN UJIAN: Amaran Banjir - Dengkil',
+                      zh: '测试警报：洪水预警 - Dengkil',
+                    ),
+                    description: tr(
+                      en: 'Real emergency test alert for Dengkil flood response. Proceed to safe high ground and review evacuation route now.',
+                      ms: 'Amaran ujian kecemasan sebenar untuk tindak balas banjir Dengkil. Bergerak ke kawasan tinggi yang selamat dan semak laluan pemindahan sekarang.',
+                      zh: '用于 Dengkil 洪灾响应的真实紧急测试警报。请立即前往安全高地并查看疏散路线。',
+                    ),
+                    source: tr(en: 'Test Mode', ms: 'Mod Ujian', zh: '测试模式'),
+                  );
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -727,9 +1203,10 @@ class _ProfileTabState extends State<ProfileTab> {
                 onChanged: (value) {
                   themeController.setDarkMode(value);
                 },
-                thumbColor: WidgetStateProperty.all(primary),
-                trackColor: WidgetStateProperty.resolveWith((states) =>
-                  states.contains(WidgetState.selected) ? primary.withAlpha(120) : null),
+                activeTrackColor: switchActiveTrack,
+                activeThumbColor: switchActiveThumb,
+                inactiveTrackColor: switchInactiveTrack,
+                inactiveThumbColor: switchInactiveThumb,
               ),
             ),
             const SizedBox(height: 8),
@@ -749,7 +1226,7 @@ class _ProfileTabState extends State<ProfileTab> {
                       tr(en: 'Log Out', ms: 'Log Keluar', zh: '退出登录'),
                       style: const TextStyle(
                         color: Color(0xFFDC2626),
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -772,47 +1249,56 @@ class _ProfileTabState extends State<ProfileTab> {
     required Color border,
     required Color secondaryText,
     required Color tertiaryText,
+    VoidCallback? onTap,
+    bool showChevron = true,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: surface,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: subtleSurface,
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Icon(icon, color: secondaryText, size: 20),
+        child: Ink(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: border),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: subtleSurface,
+                  borderRadius: BorderRadius.circular(999),
                 ),
-                const SizedBox(height: 1),
-                Text(
-                  subtitle,
-                  style: TextStyle(fontSize: 12, color: secondaryText),
+                child: Icon(icon, color: secondaryText, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 12, color: secondaryText),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              if (showChevron) Icon(Icons.chevron_right, color: tertiaryText),
+            ],
           ),
-          Icon(Icons.chevron_right, color: tertiaryText),
-        ],
+        ),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:disaster_resilience_ai/localization/app_language.dart';
 import 'package:disaster_resilience_ai/models/profile_model.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
 
@@ -24,9 +25,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late TextEditingController _phoneController;
   late TextEditingController _allergiesController;
   late TextEditingController _medicalController;
-  late TextEditingController _contactNameController;
-  late TextEditingController _contactRelationController;
-  late TextEditingController _contactPhoneController;
 
   String? _selectedBloodType;
   bool _saving = false;
@@ -53,15 +51,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _medicalController = TextEditingController(
       text: widget.profile.medicalConditions,
     );
-    _contactNameController = TextEditingController(
-      text: widget.profile.emergencyContactName,
-    );
-    _contactRelationController = TextEditingController(
-      text: widget.profile.emergencyContactRelationship,
-    );
-    _contactPhoneController = TextEditingController(
-      text: widget.profile.emergencyContactPhone,
-    );
     _selectedBloodType = widget.profile.bloodType;
   }
 
@@ -71,9 +60,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _phoneController.dispose();
     _allergiesController.dispose();
     _medicalController.dispose();
-    _contactNameController.dispose();
-    _contactRelationController.dispose();
-    _contactPhoneController.dispose();
     super.dispose();
   }
 
@@ -89,9 +75,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
         'blood_type': _selectedBloodType,
         'allergies': _allergiesController.text,
         'medical_conditions': _medicalController.text,
-        'emergency_contact_name': _contactNameController.text,
-        'emergency_contact_relationship': _contactRelationController.text,
-        'emergency_contact_phone': _contactPhoneController.text,
       };
 
       await _api.updateProfile(
@@ -103,9 +86,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
         Navigator.pop(context, true);
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Error saving profile: $e')));
+      ).showSnackBar(
+        SnackBar(content: Text(_tr(en: 'Error saving profile: $e', ms: 'Ralat menyimpan profil: $e', zh: '保存个人资料出错：$e'))),
+      );
     } finally {
       if (mounted) {
         setState(() => _saving = false);
@@ -115,123 +101,98 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pageBg = isDark ? const Color(0xFF0F140F) : const Color(0xFFF0F2F5);
+    final surface = isDark ? const Color(0xFF1B251B) : Colors.white;
+    final border = isDark ? const Color(0xFF334236) : const Color(0xFFE2E8F0);
+    final heading = isDark ? const Color(0xFFE5E7EB) : const Color(0xFF111827);
+    final section = isDark ? const Color(0xFF86C77C) : const Color(0xFF2E7D32);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F2F5),
+      backgroundColor: pageBg,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: pageBg,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 1,
-        title: const Text('Edit Profile & Emergency Info'),
+        title: Text(
+          _tr(en: 'Edit Profile', ms: 'Sunting Profil', zh: '编辑个人资料'),
+        ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
           child: Container(
             height: 1,
-            color: const Color(0xFF2D5927).withAlpha(26),
+            color: border,
           ),
         ),
-        actions: [
-          _saving
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.only(right: 16.0),
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  ),
-                )
-              : IconButton(icon: const Icon(Icons.check), onPressed: _save),
-        ],
       ),
       body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
-            const Text(
-              'Personal Information',
+            Text(
+              _tr(en: 'Personal Information', ms: 'Maklumat Peribadi', zh: '个人信息'),
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF2E7D32),
+                color: section,
               ),
             ),
             const SizedBox(height: 16),
             _buildTextField(
-              'Full Name',
+              _tr(en: 'Full Name', ms: 'Nama Penuh', zh: '全名'),
               _fullNameController,
               Icons.person_outline,
             ),
             _buildTextField(
-              'Phone Number',
+              _tr(en: 'Phone Number', ms: 'Nombor Telefon', zh: '电话号码'),
               _phoneController,
               Icons.phone_android,
               keyboardType: TextInputType.phone,
             ),
 
             const SizedBox(height: 24),
-            const Text(
-              'Medical Details',
+            Text(
+              _tr(en: 'Medical Details', ms: 'Butiran Perubatan', zh: '医疗详情'),
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF2E7D32),
+                color: section,
               ),
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _selectedBloodType,
-              decoration: _inputDecoration(
-                'Blood Type',
-                Icons.bloodtype_outlined,
+            Theme(
+              data: Theme.of(context).copyWith(
+                canvasColor: surface,
               ),
-              items: _bloodTypes
-                  .map(
-                    (type) => DropdownMenuItem(value: type, child: Text(type)),
-                  )
-                  .toList(),
-              onChanged: (val) => setState(() => _selectedBloodType = val),
+              child: DropdownButtonFormField<String>(
+                initialValue: _selectedBloodType,
+                dropdownColor: surface,
+                style: TextStyle(color: heading),
+                decoration: _inputDecoration(
+                  _tr(en: 'Blood Type', ms: 'Jenis Darah', zh: '血型'),
+                  Icons.bloodtype_outlined,
+                ),
+                items: _bloodTypes
+                    .map(
+                      (type) => DropdownMenuItem(value: type, child: Text(type)),
+                    )
+                    .toList(),
+                onChanged: (val) => setState(() => _selectedBloodType = val),
+              ),
             ),
             const SizedBox(height: 16),
             _buildTextField(
-              'Allergies',
+              _tr(en: 'Allergies', ms: 'Alahan', zh: '过敏'),
               _allergiesController,
               Icons.warning_amber,
               maxLines: 2,
             ),
             _buildTextField(
-              'Medical Conditions',
+              _tr(en: 'Medical Conditions', ms: 'Keadaan Perubatan', zh: '健康状况'),
               _medicalController,
               Icons.medical_services_outlined,
               maxLines: 2,
-            ),
-
-            const SizedBox(height: 24),
-            const Text(
-              'Emergency Contact',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF2E7D32),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              'Contact Name',
-              _contactNameController,
-              Icons.contact_emergency,
-            ),
-            _buildTextField(
-              'Relationship',
-              _contactRelationController,
-              Icons.people_outline,
-            ),
-            _buildTextField(
-              'Contact Phone',
-              _contactPhoneController,
-              Icons.phone,
-              keyboardType: TextInputType.phone,
             ),
 
             const SizedBox(height: 32),
@@ -245,9 +206,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text(
-                'SAVE PROFILE',
-                style: TextStyle(fontWeight: FontWeight.bold),
+              child: Text(
+                _saving
+                    ? _tr(en: 'SAVING...', ms: 'MENYIMPAN...', zh: '保存中...')
+                    : _tr(en: 'SAVE PROFILE', ms: 'SIMPAN PROFIL', zh: '保存个人资料'),
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
             ),
           ],
@@ -275,14 +238,41 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   InputDecoration _inputDecoration(String label, IconData icon) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = isDark ? const Color(0xFF334236) : const Color(0xFFD1D5DB);
+    final textColor = isDark ? const Color(0xFFE5E7EB) : const Color(0xFF111827);
+    final fillColor = isDark ? const Color(0xFF1E2720) : Colors.white;
     return InputDecoration(
       labelText: label,
+      labelStyle: TextStyle(color: textColor.withAlpha(190)),
       prefixIcon: Icon(icon, color: const Color(0xFF2E7D32)),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      filled: true,
+      fillColor: fillColor,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: borderColor),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: borderColor),
+      ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: Color(0xFF2E7D32), width: 2),
       ),
     );
+  }
+
+  String _tr({required String en, required String ms, required String zh}) {
+    final language = AppLanguageScope.of(context).language;
+    return switch (language) {
+      AppLanguage.english => en,
+      AppLanguage.indonesian => (() {
+        final id = indonesianText(en);
+        return id == en ? ms : id;
+      })(),
+      AppLanguage.malay => ms,
+      AppLanguage.chinese => zh,
+    };
   }
 }

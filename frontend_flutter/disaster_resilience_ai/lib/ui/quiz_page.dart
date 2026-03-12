@@ -46,6 +46,10 @@ class _QuizPageState extends State<QuizPage> {
 
   String _tr({required String en, required String ms, String? zh}) {
     final lang = AppLanguageScope.of(context).language;
+    if (lang == AppLanguage.indonesian) {
+      final id = indonesianText(en);
+      return id == en ? ms : id;
+    }
     if (lang == AppLanguage.malay) return ms;
     if (lang == AppLanguage.chinese) return zh ?? en;
     return en;
@@ -56,7 +60,11 @@ class _QuizPageState extends State<QuizPage> {
     _accessToken = prefs.getString('auth_access_token');
     if (_accessToken == null) {
       setState(() {
-        _error = 'Not signed in';
+        _error = _tr(
+          en: 'Not signed in',
+          ms: 'Belum log masuk',
+          zh: '未登录',
+        );
         _loading = false;
       });
       return;
@@ -200,7 +208,10 @@ class _QuizPageState extends State<QuizPage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: widget.themeColor,
               ),
-              child: const Text('Retry', style: TextStyle(color: Colors.white)),
+              child: Text(
+                _tr(en: 'Retry', ms: 'Cuba Lagi', zh: '重试'),
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),

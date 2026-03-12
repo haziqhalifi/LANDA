@@ -1,0 +1,26 @@
+{
+  "@@locale": "id",
+  "mapFilterFlood": "Banjir",
+  "mapFilterLandslide": "Tanah Longsor",
+  "mapLegendTitle": "PETA BAHAYA",
+  "mapLegendFloodRiskZone": "Zona Risiko Banjir",
+  "mapLegendLandslideRiskZone": "Zona Risiko Tanah Longsor",
+  "mapLoadingHazardZones": "Memuat zona bahaya...",
+  "mapRiskScoreLabel": "Skor Risiko: ",
+  "mapAreaRiskLabel": "Risiko Area: ",
+  "mapRadiusKm": "Radius: {radius} km",
+  "@mapRadiusKm": {
+    "placeholders": {
+      "radius": {}
+    }
+  },
+  "mapAdminAreaBasis": "Berdasarkan {count} titik bahaya yang dipetakan di dalam area administrasi ini.",
+  "@mapAdminAreaBasis": {
+    "placeholders": {
+      "count": {}
+    }
+  },
+  "mapHazardFlood": "Banjir",
+  "mapHazardLandslide": "Tanah Longsor",
+  "mapHazardGeneric": "Bahaya"
+}

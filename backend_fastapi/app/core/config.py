@@ -38,6 +38,7 @@ EASYSENDSMS_PASSWORD: str = os.getenv("EASYSENDSMS_PASSWORD", "")
 # ── Anthropic / Claude AI ─────────────────────────────────────────────────────
 ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 
+
 # ── Admin Website (simple hardcoded credentials) ─────────────────────────────
 # Override these in .env for production
 ADMIN_USERNAME: str = os.getenv("ADMIN_USERNAME", "admin")

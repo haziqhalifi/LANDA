@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
-import 'package:image_picker/image_picker.dart' show XFile;
 
 class AuthResult {
   final String accessToken;
@@ -31,6 +30,7 @@ class AuthResult {
   }
 }
 
+/// Service class for communicating with the FastAPI backend.
 class ApiService {
   static const Duration _requestTimeout = Duration(seconds: 12);
   static const String _baseUrlOverride = String.fromEnvironment(
@@ -58,18 +58,32 @@ class ApiService {
   }
 
   final http.Client _client;
+
   ApiService({http.Client? client}) : _client = client ?? http.Client();
 
-  String _extractErrorMessage(http.Response response) {
-    try {
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final detail = body['detail'];
-      if (detail is String && detail.isNotEmpty) return detail;
-    } catch (_) {}
-    return 'Request failed with status ${response.statusCode}';
+  /// Ping the alerts service to verify connectivity.
+  Future<Map<String, dynamic>> ping() async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/api/v1/alerts/ping'),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Ping failed with status ${response.statusCode}');
   }
 
-  // ── Auth ─────────────────────────────────────────────────────────────────
+  /// Request a risk prediction from the backend.
+  Future<Map<String, dynamic>> predictRisk(List<double> features) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/v1/alerts/predict'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'features': features}),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception('Prediction failed with status ${response.statusCode}');
+  }
 
   Future<AuthResult> signUp({
     required String username,
@@ -80,7 +94,13 @@ class ApiService {
       Uri.parse('$baseUrl/api/v1/auth/signup'),
       body: {'username': username, 'email': email, 'password': password},
     );
-    if (response.statusCode == 201) return AuthResult.fromJson(jsonDecode(response.body));
+
+    if (response.statusCode == 201) {
+      return AuthResult.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    }
+
     throw Exception(_extractErrorMessage(response));
   }
 
@@ -92,7 +112,13 @@ class ApiService {
       Uri.parse('$baseUrl/api/v1/auth/signin'),
       body: {'email': email, 'password': password},
     );
-    if (response.statusCode == 200) return AuthResult.fromJson(jsonDecode(response.body));
+
+    if (response.statusCode == 200) {
+      return AuthResult.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>,
+      );
+    }
+
     throw Exception(_extractErrorMessage(response));
   }
 
@@ -101,8 +127,25 @@ class ApiService {
       Uri.parse('$baseUrl/api/v1/auth/me'),
       headers: {'Authorization': 'Bearer $accessToken'},
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
     throw Exception(_extractErrorMessage(response));
+  }
+
+  String _extractErrorMessage(http.Response response) {
+    try {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final detail = body['detail'];
+      if (detail is String && detail.isNotEmpty) {
+        return detail;
+      }
+    } catch (_) {
+      // Fallback below if response body is not JSON.
+    }
+    return 'Request failed with status ${response.statusCode}';
   }
 
   Future<http.Response> _postWithNetworkHandling(
@@ -165,12 +208,23 @@ class ApiService {
 
   // ── Hyper-Local Early Warnings ──────────────────────────────────────────
 
-  Future<Map<String, dynamic>> fetchNearbyWarnings({required double latitude, required double longitude}) async {
-    final uri = Uri.parse('$baseUrl/api/v1/warnings/nearby').replace(
-      queryParameters: {'latitude': latitude.toString(), 'longitude': longitude.toString()},
+  /// Fetch active warnings near a specific coordinate.
+  /// This is the core "hyper-local" feature — only returns warnings whose
+  /// affected zone covers the user's current location.
+  Future<Map<String, dynamic>> fetchNearbyWarnings({
+    required double latitude,
+    required double longitude,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/v1/warnings/nearby/').replace(
+      queryParameters: {
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+      },
     );
     final response = await _client.get(uri);
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
     throw Exception('Failed to fetch nearby warnings: ${response.statusCode}');
   }
 
@@ -188,7 +242,9 @@ class ApiService {
       '$baseUrl/api/v1/warnings',
     ).replace(queryParameters: params);
     final response = await _client.get(uri);
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
     throw Exception('Failed to fetch warnings: ${response.statusCode}');
   }
 
@@ -202,8 +258,6 @@ class ApiService {
     }
     throw Exception('Warning not found');
   }
-
-  // ── Location & Device ─────────────────────────────────────────────────────
 
   /// Create and broadcast a new warning.
   /// Returns notify result containing warning_id and delivery stats.
@@ -256,7 +310,9 @@ class ApiService {
       },
       body: jsonEncode({'latitude': latitude, 'longitude': longitude}),
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
     throw Exception('Failed to update location: ${response.statusCode}');
   }
 
@@ -293,12 +349,15 @@ class ApiService {
       },
       body: jsonEncode(payload),
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
     throw Exception('Failed to register device: ${response.statusCode}');
   }
 
-  // ── Map ───────────────────────────────────────────────────────────────────
+  // ── AI Risk Mapping ──────────────────────────────────────────────────────
 
+  /// Fetch all map data: risk zones, evacuation centres, and routes.
   Future<Map<String, dynamic>> fetchMapData({String? hazardType}) async {
     final params = <String, String>{};
     if (hazardType != null) params['hazard_type'] = hazardType;
@@ -307,7 +366,9 @@ class ApiService {
       '$baseUrl/api/v1/risk-map',
     ).replace(queryParameters: params.isNotEmpty ? params : null);
     final response = await _client.get(uri);
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
     throw Exception('Failed to fetch map data: ${response.statusCode}');
   }
 
@@ -331,7 +392,12 @@ class ApiService {
         final routes = data['routes'] as List;
         if (routes.isNotEmpty) {
           final geometry = routes[0]['geometry']['coordinates'] as List;
-          return geometry.map((point) => {'lat': (point[1] as num).toDouble(), 'lng': (point[0] as num).toDouble()}).toList();
+          return geometry.map((point) {
+            return {
+              'lat': (point[1] as num).toDouble(),
+              'lng': (point[0] as num).toDouble(),
+            };
+          }).toList();
         }
       }
       return [];
@@ -434,6 +500,62 @@ class ApiService {
 
   // ── Community Reports ─────────────────────────────────────────────────────
 
+  Future<Map<String, dynamic>> fetchNearbyReports({
+    required String accessToken,
+    required double latitude,
+    required double longitude,
+    double radiusKm = 50,
+    String? statusFilter,
+  }) async {
+    final params = <String, String>{
+      'latitude': latitude.toString(),
+      'longitude': longitude.toString(),
+      'radius_km': radiusKm.toString(),
+    };
+    if (statusFilter != null && statusFilter.isNotEmpty) {
+      params['status_filter'] = statusFilter;
+    }
+    final uri = Uri.parse('$baseUrl/api/v1/reports/nearby/list').replace(
+      queryParameters: params,
+    );
+    final response = await _getWithNetworkHandling(
+      uri,
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<Map<String, dynamic>> uploadReportMedia({
+    required String accessToken,
+    required Uint8List bytes,
+    required String filename,
+    required String contentType,
+  }) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/api/v1/reports/media/upload'),
+    );
+    request.headers['Authorization'] = 'Bearer $accessToken';
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+        contentType: _parseMediaType(contentType),
+      ),
+    );
+
+    final streamed = await request.send().timeout(_requestTimeout);
+    final response = await http.Response.fromStream(streamed);
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(_extractErrorMessage(response));
+  }
+
   Future<Map<String, dynamic>> submitCommunityReport({
     required String accessToken,
     required String reportType,
@@ -463,6 +585,41 @@ class ApiService {
     throw Exception(_extractErrorMessage(response));
   }
 
+  Future<void> vouchReport({
+    required String accessToken,
+    required String reportId,
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/reports/$reportId/vouch'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {},
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(_extractErrorMessage(response));
+    }
+  }
+
+  Future<void> unvouchReport({
+    required String accessToken,
+    required String reportId,
+  }) async {
+    try {
+      final response = await _client
+          .delete(
+            Uri.parse('$baseUrl/api/v1/reports/$reportId/vouch'),
+            headers: {'Authorization': 'Bearer $accessToken'},
+          )
+          .timeout(_requestTimeout);
+      if (response.statusCode != 200 && response.statusCode != 204) {
+        throw Exception(_extractErrorMessage(response));
+      }
+    } on TimeoutException {
+      throw Exception(_connectivityErrorMessage());
+    } on http.ClientException {
+      throw Exception(_connectivityErrorMessage());
+    }
+  }
+
   MediaType? _parseMediaType(String contentType) {
     final chunks = contentType.split('/');
     if (chunks.length != 2) return null;
@@ -483,6 +640,7 @@ class ApiService {
     return null;
   }
 
+<<<<<<< HEAD
   // ── Reports ───────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> fetchNearbyReports({
@@ -788,11 +946,11 @@ class ApiService {
   // ── IoT Sirens ───────────────────────────────────────────────────────────
 
   Future<List<dynamic>> fetchSirens() async {
-    final response = await _getWithNetworkHandling(
-      Uri.parse('$baseUrl/api/v1/sirens/'),
-    );
-    if (response.statusCode == 200) return jsonDecode(response.body) as List;
-    throw Exception(_extractErrorMessage(response));
+    final response = await _client.get(Uri.parse('$baseUrl/api/v1/sirens/'));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as List<dynamic>;
+    }
+    throw Exception('Failed to fetch sirens (${response.statusCode})');
   }
 
   Future<Map<String, dynamic>> registerSiren({
@@ -802,32 +960,45 @@ class ApiService {
     required double longitude,
     double radiusKm = 5.0,
     String? endpointUrl,
+    String? apiKey,
   }) async {
     final response = await _postWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/sirens/'),
-      headers: {'Authorization': 'Bearer $accessToken'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
       body: {
         'name': name,
         'latitude': latitude,
         'longitude': longitude,
         'radius_km': radiusKm,
         if (endpointUrl != null) 'endpoint_url': endpointUrl,
+        if (apiKey != null) 'api_key': apiKey,
       },
     );
-    if (response.statusCode == 201) return jsonDecode(response.body);
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
     throw Exception(_extractErrorMessage(response));
   }
 
   Future<Map<String, dynamic>> triggerSiren({
     required String accessToken,
     required String sirenId,
+    String? warningId,
   }) async {
     final response = await _postWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/sirens/$sirenId/trigger'),
-      headers: {'Authorization': 'Bearer $accessToken'},
-      body: {},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: {if (warningId != null) 'warning_id': warningId},
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
     throw Exception(_extractErrorMessage(response));
   }
 
@@ -837,10 +1008,15 @@ class ApiService {
   }) async {
     final response = await _postWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/sirens/$sirenId/stop'),
-      headers: {'Authorization': 'Bearer $accessToken'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
       body: {},
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
     throw Exception(_extractErrorMessage(response));
   }
 
@@ -851,37 +1027,21 @@ class ApiService {
   }) async {
     final response = await _patchWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/sirens/$sirenId/status'),
-      headers: {'Authorization': 'Bearer $accessToken'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
       body: {'status': status},
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
     throw Exception(_extractErrorMessage(response));
   }
 
-  // ── AI Risk Prediction ────────────────────────────────────────────────────
+  // ── AI-Driven Learning / Quiz ─────────────────────────────────────────
 
-  Future<Map<String, dynamic>> predictRisk(List<double> features) async {
-    final response = await _postWithNetworkHandling(
-      Uri.parse('$baseUrl/api/v1/risk-map/predict'),
-      body: {'features': features},
-    );
-    if (response.statusCode == 200) return jsonDecode(response.body);
-    throw Exception(_extractErrorMessage(response));
-  }
-
-  // ── Adaptive Learning ─────────────────────────────────────────────────────
-
-  Future<Map<String, dynamic>> fetchLearningProgress({
-    required String accessToken,
-  }) async {
-    final response = await _getWithNetworkHandling(
-      Uri.parse('$baseUrl/api/v1/learn/progress'),
-      headers: {'Authorization': 'Bearer $accessToken'},
-    );
-    if (response.statusCode == 200) return jsonDecode(response.body);
-    throw Exception(_extractErrorMessage(response));
-  }
-
+  /// Generate an adaptive quiz for a hazard type.
   Future<Map<String, dynamic>> generateQuiz({
     required String accessToken,
     required String hazardType,
@@ -889,24 +1049,49 @@ class ApiService {
   }) async {
     final response = await _postWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/learn/quiz/generate'),
-      headers: {'Authorization': 'Bearer $accessToken'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
       body: {'hazard_type': hazardType, 'num_questions': numQuestions},
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
     throw Exception(_extractErrorMessage(response));
   }
 
+  /// Submit quiz answers and get graded results + recommendations.
   Future<Map<String, dynamic>> submitQuiz({
     required String accessToken,
     required String hazardType,
-    required List<Map<String, dynamic>> answers,
+    required List<Map<String, String>> answers,
   }) async {
     final response = await _postWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/learn/quiz/submit'),
-      headers: {'Authorization': 'Bearer $accessToken'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
       body: {'hazard_type': hazardType, 'answers': answers},
     );
-    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  /// Get learning progress across all hazard types.
+  Future<Map<String, dynamic>> fetchLearningProgress({
+    required String accessToken,
+  }) async {
+    final response = await _getWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/learn/progress'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
     throw Exception(_extractErrorMessage(response));
   }
 }
