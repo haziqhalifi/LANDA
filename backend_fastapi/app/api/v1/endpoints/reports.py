@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
 from app.api.v1.dependencies import get_current_user
 from app.db import reports as report_db
+from app.db.supabase_client import get_client
 from app.schemas.report import (
     BoundingBoxQuery, HelpfulOut, ReportCreate,
     ReportDescriptionUpdate, ReportList, ReportMediaUploadOut, ReportOut,
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_MEDIA_DIR = Path(__file__).resolve().parents[4] / "uploads" / "reports"
+_REPORT_MEDIA_BUCKET = os.getenv("SUPABASE_REPORT_MEDIA_BUCKET", "report-media")
 _ALLOWED_MEDIA = {
     "image/jpeg",
     "image/png",
@@ -61,7 +62,6 @@ def _to_out(row: dict, current_user_id: str | None = None) -> ReportOut:
 
 @router.post("/media/upload", response_model=ReportMediaUploadOut, status_code=status.HTTP_201_CREATED)
 async def upload_report_media(
-    request: Request,
     file: UploadFile = File(...),
     current_user: UserOut = Depends(get_current_user),
 ) -> ReportMediaUploadOut:
@@ -74,15 +74,44 @@ async def upload_report_media(
     if len(data) > _MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File too large (max 25MB)")
 
-    _MEDIA_DIR.mkdir(parents=True, exist_ok=True)
-    suffix = Path(file.filename or "upload").suffix or (
+    filename = file.filename or "upload"
+    lower_name = filename.lower()
+    suffix = f".{lower_name.rsplit('.', 1)[-1]}" if "." in lower_name else (
         ".jpg" if (file.content_type or "").startswith("image/") else ".mp4"
     )
-    safe_name = f"{current_user.id}_{uuid.uuid4().hex}{suffix}"
-    out_path = _MEDIA_DIR / safe_name
-    out_path.write_bytes(data)
+    safe_name = f"{uuid.uuid4().hex}{suffix}"
+    storage_path = f"reports/{current_user.id}/{safe_name}"
 
-    media_url = f"{request.base_url}uploads/reports/{safe_name}"
+    sb = get_client()
+    try:
+        sb.storage.from_(_REPORT_MEDIA_BUCKET).upload(
+            storage_path,
+            data,
+            {
+                "content-type": file.content_type,
+                "upsert": "false",
+            },
+        )
+    except Exception as exc:
+        logger.error("Supabase Storage upload failed for %s: %s", storage_path, exc)
+        raise HTTPException(status_code=500, detail="Failed to upload media") from exc
+
+    public_url = sb.storage.from_(_REPORT_MEDIA_BUCKET).get_public_url(storage_path)
+    if isinstance(public_url, dict):
+        nested_obj = public_url.get("data")
+        nested = nested_obj if isinstance(nested_obj, dict) else {}
+        media_url = (
+            public_url.get("publicURL")
+            or public_url.get("publicUrl")
+            or nested.get("publicURL")
+            or nested.get("publicUrl")
+            or ""
+        )
+    else:
+        media_url = str(public_url or "")
+    if not media_url:
+        raise HTTPException(status_code=500, detail="Failed to generate media URL")
+
     media_type = "video" if (file.content_type or "").startswith("video/") else "image"
     return ReportMediaUploadOut(url=media_url, media_type=media_type)
 

@@ -1051,6 +1051,37 @@ class _MapTabState extends State<MapTab> {
     };
   }
 
+  Future<Map<String, dynamic>> _toggleReportVouch(Map<String, dynamic> report) async {
+    final token = widget.accessToken;
+    final reportId = report['id']?.toString();
+    if (token.isEmpty || reportId == null || reportId.isEmpty) {
+      throw Exception('Sign in required to vouch.');
+    }
+
+    final currentlyVouched = report['current_user_vouched'] == true;
+    if (currentlyVouched) {
+      await _api.unvouchReport(accessToken: token, reportId: reportId);
+    } else {
+      await _api.vouchReport(accessToken: token, reportId: reportId);
+    }
+
+    final currentCount = (report['vouch_count'] as num?)?.toInt() ?? 0;
+    final updated = Map<String, dynamic>.from(report)
+      ..['current_user_vouched'] = !currentlyVouched
+      ..['vouch_count'] = currentlyVouched
+          ? (currentCount > 0 ? currentCount - 1 : 0)
+          : currentCount + 1;
+
+    if (mounted) {
+      setState(() {
+        _reports = _reports
+            .map((r) => r['id']?.toString() == reportId ? updated : r)
+            .toList();
+      });
+    }
+    return updated;
+  }
+
   void _showReportInfo(Map<String, dynamic> report) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -1060,8 +1091,13 @@ class _MapTabState extends State<MapTab> {
     final title = (report['location_name'] as String?)?.trim();
     final description = (report['description'] as String?)?.trim() ?? '';
     final vulnerable = report['vulnerable_person'] == true;
-    final vouches = (report['vouch_count'] as num?)?.toInt() ?? 0;
     final confidence = (report['confidence_score'] as num?)?.toDouble();
+    final mediaUrls = (report['media_urls'] as List<dynamic>? ?? const [])
+        .map((e) => e.toString())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    Map<String, dynamic> sheetReport = Map<String, dynamic>.from(report);
+    bool vouching = false;
 
     showModalBottomSheet(
       context: context,
@@ -1069,12 +1105,17 @@ class _MapTabState extends State<MapTab> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final vouches = (sheetReport['vouch_count'] as num?)?.toInt() ?? 0;
+          final userVouched = sheetReport['current_user_vouched'] == true;
+
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
             Center(
               child: Container(
                 width: 40,
@@ -1126,6 +1167,32 @@ class _MapTabState extends State<MapTab> {
                 ),
               ],
             ),
+            if (mediaUrls.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  mediaUrls.first,
+                  height: 140,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 72,
+                    alignment: Alignment.center,
+                    color: isDark ? const Color(0xFF1A1F1A) : const Color(0xFFF1F5F9),
+                    child: Text(
+                      _tr(
+                        en: 'Photo unavailable',
+                        id: 'Foto tidak tersedia',
+                        ms: 'Foto tidak tersedia',
+                        zh: '图片不可用',
+                      ),
+                      style: TextStyle(color: isDark ? scheme.onSurface : Colors.grey[700]),
+                    ),
+                  ),
+                ),
+              ),
+            ],
             if (description.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(
@@ -1201,8 +1268,46 @@ class _MapTabState extends State<MapTab> {
               ],
             ),
             const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: vouching
+                    ? null
+                    : () async {
+                        try {
+                          setSheetState(() => vouching = true);
+                          final updated = await _toggleReportVouch(sheetReport);
+                          if (!ctx.mounted) return;
+                          setSheetState(() {
+                            sheetReport = updated;
+                            vouching = false;
+                          });
+                        } catch (e) {
+                          if (!ctx.mounted) return;
+                          setSheetState(() => vouching = false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                          );
+                        }
+                      },
+                icon: vouching
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(userVouched ? Icons.thumb_up : Icons.thumb_up_alt_outlined),
+                label: Text(
+                  userVouched
+                      ? _tr(en: 'Remove Vouch', id: 'Hapus verifikasi', ms: 'Buang sokongan', zh: '取消确认')
+                      : _tr(en: 'Vouch This Report', id: 'Verifikasi laporan ini', ms: 'Sokong laporan ini', zh: '为此报告确认'),
+                ),
+              ),
+            ),
           ],
         ),
+      );
+        },
       ),
     );
   }
