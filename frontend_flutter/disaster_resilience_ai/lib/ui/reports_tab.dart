@@ -145,7 +145,9 @@ class _ReportsTabState extends State<ReportsTab> {
           : 'Community-submitted report',
       location: locationName.isNotEmpty ? locationName : _locationName,
       time: createdAt != null ? _timeAgo(createdAt) : 'Recently',
-      distance: distanceKm != null ? '${distanceKm.toStringAsFixed(1)} km' : null,
+      distance: distanceKm != null
+          ? '${distanceKm.toStringAsFixed(1)} km'
+          : null,
       icon: iconSet.icon,
       iconBgLight: iconSet.iconBgLight,
       iconBgDark: iconSet.iconBgDark,
@@ -262,6 +264,10 @@ class _ReportsTabState extends State<ReportsTab> {
     String tr({required String en, required String ms, required String zh}) {
       return switch (language) {
         AppLanguage.english => en,
+        AppLanguage.indonesian => (() {
+          final id = indonesianText(en);
+          return id == en ? ms : id;
+        })(),
         AppLanguage.malay => ms,
         AppLanguage.chinese => zh,
       };
@@ -287,27 +293,13 @@ class _ReportsTabState extends State<ReportsTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Text(
-                  tr(
-                    en: 'Community Reports',
-                    ms: 'Laporan Komuniti',
-                    zh: '社区报告',
-                  ),
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: titleColor,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
             GestureDetector(
               onTap: _showLocationSheet,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: cardBg,
                   borderRadius: BorderRadius.circular(12),
@@ -334,7 +326,10 @@ class _ReportsTabState extends State<ReportsTab> {
                     ),
                     if (!_isCurrentLocation) ...[
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF2E7D32).withAlpha(28),
                           borderRadius: BorderRadius.circular(8),
@@ -370,10 +365,14 @@ class _ReportsTabState extends State<ReportsTab> {
                     _isCurrentLocation = true;
                   });
                   _weather
-                      .fetchLocationName(latitude: _currentLat, longitude: _currentLon)
+                      .fetchLocationName(
+                        latitude: _currentLat,
+                        longitude: _currentLon,
+                      )
                       .then((name) {
-                    if (mounted) setState(() => _locationName = name ?? 'My Location');
-                  });
+                        if (mounted)
+                          setState(() => _locationName = name ?? 'My Location');
+                      });
                   _loadNearbyReports();
                 },
                 child: Row(
@@ -394,12 +393,11 @@ class _ReportsTabState extends State<ReportsTab> {
             ],
             const SizedBox(height: 14),
             Text(
-              tr(en: 'NEARBY ACTIVITY', ms: 'AKTIVITI BERHAMPIRAN', zh: '附近动态'),
+              tr(en: 'Nearby Activity', ms: 'Aktiviti Berhampiran', zh: '附近动态'),
               style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.0,
-                color: subtitleColor,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: titleColor,
               ),
             ),
             const SizedBox(height: 12),
@@ -451,9 +449,7 @@ class _ReportsTabState extends State<ReportsTab> {
                       OutlinedButton.icon(
                         onPressed: _loadNearbyReports,
                         icon: const Icon(Icons.refresh_rounded, size: 16),
-                        label: Text(
-                          tr(en: 'Retry', ms: 'Cuba Lagi', zh: '重试'),
-                        ),
+                        label: Text(tr(en: 'Retry', ms: 'Cuba Lagi', zh: '重试')),
                       ),
                     ],
                   ),
@@ -468,7 +464,7 @@ class _ReportsTabState extends State<ReportsTab> {
                         ms: 'Belum ada aktiviti berhampiran.',
                         zh: '附近暂时没有动态。',
                       ),
-                      style: TextStyle(color: subtitleColor, fontSize: 13),
+                      style: TextStyle(color: subtitleColor, fontSize: 12),
                     ),
                   ),
                 ),
@@ -545,9 +541,15 @@ class _ReportsTabState extends State<ReportsTab> {
             }
 
             final isDark = Theme.of(context).brightness == Brightness.dark;
-            final titleColor = isDark ? const Color(0xFFE5E7EB) : const Color(0xFF1E293B);
-            final subColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
-            final border = isDark ? const Color(0xFF334236) : const Color(0xFFE2E8F0);
+            final titleColor = isDark
+                ? const Color(0xFFE5E7EB)
+                : const Color(0xFF1E293B);
+            final subColor = isDark
+                ? const Color(0xFF94A3B8)
+                : const Color(0xFF64748B);
+            final border = isDark
+                ? const Color(0xFF334236)
+                : const Color(0xFFE2E8F0);
 
             return Padding(
               padding: EdgeInsets.only(
@@ -565,7 +567,9 @@ class _ReportsTabState extends State<ReportsTab> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF334236) : Colors.grey.shade300,
+                        color: isDark
+                            ? const Color(0xFF334236)
+                            : Colors.grey.shade300,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -574,7 +578,7 @@ class _ReportsTabState extends State<ReportsTab> {
                   Text(
                     'Choose Location',
                     style: TextStyle(
-                      fontSize: 17,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: titleColor,
                     ),
@@ -587,7 +591,10 @@ class _ReportsTabState extends State<ReportsTab> {
                     decoration: InputDecoration(
                       hintText: 'Search city or state in Malaysia...',
                       hintStyle: TextStyle(color: subColor),
-                      prefixIcon: const Icon(Icons.search, color: Color(0xFF2E7D32)),
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        color: Color(0xFF2E7D32),
+                      ),
                       suffixIcon: searching
                           ? const Padding(
                               padding: EdgeInsets.all(12),
@@ -602,7 +609,9 @@ class _ReportsTabState extends State<ReportsTab> {
                             )
                           : null,
                       filled: true,
-                      fillColor: isDark ? const Color(0xFF1E2720) : const Color(0xFFF8F9FA),
+                      fillColor: isDark
+                          ? const Color(0xFF1E2720)
+                          : const Color(0xFFF8F9FA),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide(color: border),
@@ -617,7 +626,11 @@ class _ReportsTabState extends State<ReportsTab> {
                   const SizedBox(height: 8),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.my_location, color: Color(0xFF2E7D32), size: 18),
+                    leading: const Icon(
+                      Icons.my_location,
+                      color: Color(0xFF2E7D32),
+                      size: 18,
+                    ),
                     title: Text(
                       'Use my current location',
                       style: TextStyle(
@@ -632,10 +645,7 @@ class _ReportsTabState extends State<ReportsTab> {
                         _locationName,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: subColor,
-                          fontSize: 12,
-                        ),
+                        style: TextStyle(color: subColor, fontSize: 12),
                       ),
                     ),
                     onTap: () {
@@ -646,10 +656,16 @@ class _ReportsTabState extends State<ReportsTab> {
                         _isCurrentLocation = true;
                       });
                       _weather
-                          .fetchLocationName(latitude: _currentLat, longitude: _currentLon)
+                          .fetchLocationName(
+                            latitude: _currentLat,
+                            longitude: _currentLon,
+                          )
                           .then((name) {
-                        if (mounted) setState(() => _locationName = name ?? 'My Location');
-                      });
+                            if (mounted)
+                              setState(
+                                () => _locationName = name ?? 'My Location',
+                              );
+                          });
                       _loadNearbyReports();
                     },
                   ),
@@ -663,8 +679,15 @@ class _ReportsTabState extends State<ReportsTab> {
                         itemBuilder: (_, i) {
                           final r = results[i];
                           return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
-                            leading: Icon(Icons.location_on_outlined, color: subColor, size: 18),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 0,
+                              vertical: 2,
+                            ),
+                            leading: Icon(
+                              Icons.location_on_outlined,
+                              color: subColor,
+                              size: 18,
+                            ),
                             title: Text(
                               r['name'] as String,
                               style: TextStyle(
@@ -740,7 +763,7 @@ class _ReportsTabState extends State<ReportsTab> {
                       item.title,
                       style: TextStyle(
                         color: titleColor,
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -749,23 +772,37 @@ class _ReportsTabState extends State<ReportsTab> {
                       item.subtitle,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: subtitleColor, fontSize: 12, height: 1.35),
+                      style: TextStyle(
+                        color: subtitleColor,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         Icon(Icons.access_time, size: 13, color: subtitleColor),
                         const SizedBox(width: 4),
-                        Text(item.time, style: TextStyle(color: subtitleColor, fontSize: 11)),
+                        Text(
+                          item.time,
+                          style: TextStyle(color: subtitleColor, fontSize: 11),
+                        ),
                         const SizedBox(width: 10),
-                        Icon(Icons.location_on_outlined, size: 13, color: subtitleColor),
+                        Icon(
+                          Icons.location_on_outlined,
+                          size: 13,
+                          color: subtitleColor,
+                        ),
                         const SizedBox(width: 2),
                         Expanded(
                           child: Text(
                             item.distance ?? item.location,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: subtitleColor, fontSize: 11),
+                            style: TextStyle(
+                              color: subtitleColor,
+                              fontSize: 11,
+                            ),
                           ),
                         ),
                       ],
@@ -786,23 +823,23 @@ class _ReportsTabState extends State<ReportsTab> {
     final normalized = status.toLowerCase();
     final (icon, fg, bg, label) = switch (normalized) {
       'verified' || 'validated' => (
-          Icons.verified,
-          isDark ? const Color(0xFF4CAF50) : Colors.green.shade700,
-          isDark ? const Color(0xFF1A2D1A) : Colors.green.shade50,
-          'Verified',
-        ),
+        Icons.verified,
+        isDark ? const Color(0xFF4CAF50) : Colors.green.shade700,
+        isDark ? const Color(0xFF1A2D1A) : Colors.green.shade50,
+        'Verified',
+      ),
       'resolved' => (
-          Icons.check_circle,
-          isDark ? const Color(0xFF94A3B8) : Colors.grey.shade700,
-          isDark ? const Color(0xFF1A1F1A) : Colors.grey.shade100,
-          'Resolved',
-        ),
+        Icons.check_circle,
+        isDark ? const Color(0xFF94A3B8) : Colors.grey.shade700,
+        isDark ? const Color(0xFF1A1F1A) : Colors.grey.shade100,
+        'Resolved',
+      ),
       _ => (
-          Icons.hourglass_top,
-          isDark ? Colors.orange.shade300 : Colors.orange.shade700,
-          isDark ? const Color(0xFF2A1F0F) : Colors.orange.shade50,
-          'Pending Review',
-        ),
+        Icons.hourglass_top,
+        isDark ? Colors.orange.shade300 : Colors.orange.shade700,
+        isDark ? const Color(0xFF2A1F0F) : Colors.orange.shade50,
+        'Pending Review',
+      ),
     };
 
     return Container(
@@ -821,7 +858,7 @@ class _ReportsTabState extends State<ReportsTab> {
             style: TextStyle(
               color: fg,
               fontSize: 10,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -1030,6 +1067,10 @@ class _InlineNewReportFormState extends State<_InlineNewReportForm> {
     String tr({required String en, required String ms, required String zh}) {
       return switch (language) {
         AppLanguage.english => en,
+        AppLanguage.indonesian => (() {
+          final id = indonesianText(en);
+          return id == en ? ms : id;
+        })(),
         AppLanguage.malay => ms,
         AppLanguage.chinese => zh,
       };

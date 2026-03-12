@@ -7,6 +7,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import 'package:disaster_resilience_ai/localization/app_language.dart';
 import 'package:disaster_resilience_ai/models/family_model.dart';
 import 'package:disaster_resilience_ai/models/risk_map_model.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
@@ -136,12 +137,30 @@ class _FamilyTabState extends State<FamilyTab> {
   }
 
   String _timeAgo(DateTime? dt) {
-    if (dt == null) return 'Never';
+    if (dt == null) return _tr(en: 'Never', ms: 'Tidak Pernah', zh: '从未');
     final diff = DateTime.now().difference(dt.toLocal());
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
+    if (diff.inMinutes < 1) {
+      return _tr(en: 'Just now', ms: 'Baru sahaja', zh: '刚刚');
+    }
+    if (diff.inMinutes < 60) {
+      return _tr(
+        en: '${diff.inMinutes}m ago',
+        ms: '${diff.inMinutes}m lalu',
+        zh: '${diff.inMinutes}分钟前',
+      );
+    }
+    if (diff.inHours < 24) {
+      return _tr(
+        en: '${diff.inHours}h ago',
+        ms: '${diff.inHours}j lalu',
+        zh: '${diff.inHours}小时前',
+      );
+    }
+    return _tr(
+      en: '${diff.inDays}d ago',
+      ms: '${diff.inDays}h lalu',
+      zh: '${diff.inDays}天前',
+    );
   }
 
   /// Returns the worst risk zone type a member is inside, or null if none.
@@ -179,10 +198,26 @@ class _FamilyTabState extends State<FamilyTab> {
 
   Widget _safetyBadge(String? zoneType) {
     final (label, color, icon) = switch (zoneType) {
-      'danger' => ('IN DANGER ZONE', Colors.red, Icons.dangerous),
-      'warning' => ('IN WARNING ZONE', Colors.orange, Icons.warning_amber),
-      'safe' => ('IN SAFE ZONE', const Color(0xFF2E7D32), Icons.check_circle),
-      _ => ('SAFE', const Color(0xFF2E7D32), Icons.check_circle_outline),
+      'danger' => (
+          _tr(en: 'IN DANGER ZONE', ms: 'DALAM ZON BAHAYA', zh: '处于危险区域'),
+          Colors.red,
+          Icons.dangerous,
+        ),
+      'warning' => (
+          _tr(en: 'IN WARNING ZONE', ms: 'DALAM ZON AMARAN', zh: '处于警戒区域'),
+          Colors.orange,
+          Icons.warning_amber,
+        ),
+      'safe' => (
+          _tr(en: 'IN SAFE ZONE', ms: 'DALAM ZON SELAMAT', zh: '处于安全区域'),
+          const Color(0xFF2E7D32),
+          Icons.check_circle,
+        ),
+      _ => (
+          _tr(en: 'SAFE', ms: 'SELAMAT', zh: '安全'),
+          const Color(0xFF2E7D32),
+          Icons.check_circle_outline,
+        ),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -247,6 +282,19 @@ class _FamilyTabState extends State<FamilyTab> {
   List<FamilyMemberLocation> get _membersWithLocation =>
       _members.where((m) => m.hasLocation).toList();
 
+  String _tr({required String en, required String ms, required String zh}) {
+    final language = AppLanguageScope.of(context).language;
+    return switch (language) {
+      AppLanguage.english => en,
+      AppLanguage.indonesian => (() {
+        final id = indonesianText(en);
+        return id == en ? ms : id;
+      })(),
+      AppLanguage.malay => ms,
+      AppLanguage.chinese => zh,
+    };
+  }
+
   LatLng get _mapCenter {
     final located = _membersWithLocation;
     if (located.isEmpty) return const LatLng(3.8077, 103.3260);
@@ -261,51 +309,85 @@ class _FamilyTabState extends State<FamilyTab> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final pageBg = isDark ? const Color(0xFF0F140F) : const Color(0xFFF0F2F5);
+    final appBarBg = isDark ? const Color(0xFF1B251B) : Colors.white;
+    final titleColor = isDark
+        ? const Color(0xFFE5E7EB)
+        : const Color(0xFF1E293B);
+    final bodyText = isDark ? const Color(0xFFA7B5A8) : const Color(0xFF475569);
+    final cardBg = isDark ? const Color(0xFF1B251B) : Colors.white;
+    final borderColor = isDark
+        ? const Color(0xFF334236)
+        : const Color(0xFFE2E8F0);
+    final mutedText = isDark ? const Color(0xFF9AA79B) : const Color(0xFF64748B);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Family')),
+      backgroundColor: pageBg,
+      appBar: AppBar(
+        backgroundColor: appBarBg,
+        surfaceTintColor: Colors.transparent,
+        title: Text(_tr(en: 'Family', ms: 'Keluarga', zh: '家人')),
+      ),
       body: RefreshIndicator(
         onRefresh: _loadData,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
           children: [
-            const Text(
-              'Family Live Location',
+            Text(
+              _tr(en: 'Family Live Location', ms: 'Lokasi Langsung Keluarga', zh: '家庭实时位置'),
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1E293B),
+                color: titleColor,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Invite family by username or email, then view their latest location updates.',
-              style: TextStyle(color: Color(0xFF475569)),
+            Text(
+              _tr(
+                en: 'Invite family by username or email, then view their latest location updates.',
+                ms: 'Jemput keluarga melalui nama pengguna atau emel, kemudian lihat kemas kini lokasi terkini mereka.',
+                zh: '通过用户名或邮箱邀请家人，然后查看他们的最新位置更新。',
+              ),
+              style: TextStyle(color: bodyText),
             ),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: cardBg,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: borderColor),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Add Family Member',
+                  Text(
+                    _tr(en: 'Add Family Member', ms: 'Tambah Ahli Keluarga', zh: '添加家庭成员'),
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B),
+                      color: titleColor,
                     ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: _identifierController,
-                    decoration: const InputDecoration(
-                      hintText: 'username or email',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      hintText: _tr(
+                        en: 'username or email',
+                        ms: 'nama pengguna atau emel',
+                        zh: '用户名或邮箱',
+                      ),
+                      hintStyle: TextStyle(color: mutedText),
+                      filled: true,
+                      fillColor: isDark ? const Color(0xFF1E2720) : Colors.white,
+                      border: OutlineInputBorder(
+                        borderSide: BorderSide(color: borderColor),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: borderColor),
+                      ),
                       isDense: true,
                     ),
                   ),
@@ -319,7 +401,9 @@ class _FamilyTabState extends State<FamilyTab> {
                         foregroundColor: Colors.white,
                       ),
                       child: Text(
-                        _sendingInvite ? 'Sending...' : 'Send Invite',
+                        _sendingInvite
+                            ? _tr(en: 'Sending...', ms: 'Menghantar...', zh: '发送中...')
+                            : _tr(en: 'Send Invite', ms: 'Hantar Jemputan', zh: '发送邀请'),
                       ),
                     ),
                   ),
@@ -331,21 +415,25 @@ class _FamilyTabState extends State<FamilyTab> {
               Text(_error!, style: const TextStyle(color: Colors.red)),
             ],
             const SizedBox(height: 20),
-            const Text(
-              'Pending Invites',
+            Text(
+              _tr(en: 'Pending Invites', ms: 'Jemputan Tertunda', zh: '待处理邀请'),
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1E293B),
+                color: titleColor,
               ),
             ),
             const SizedBox(height: 10),
             if (_loading)
               const Center(child: CircularProgressIndicator())
             else if (_invites.isEmpty)
-              const Text('No pending invites.')
+              Text(
+                _tr(en: 'No pending invites.', ms: 'Tiada jemputan tertunda.', zh: '暂无待处理邀请。'),
+                style: TextStyle(color: mutedText),
+              )
             else
               ..._invites.map(
                 (invite) => Card(
+                  color: cardBg,
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Column(
@@ -355,7 +443,10 @@ class _FamilyTabState extends State<FamilyTab> {
                           invite.requesterUsername,
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        Text(invite.requesterEmail),
+                        Text(
+                          invite.requesterEmail,
+                          style: TextStyle(color: mutedText),
+                        ),
                         const SizedBox(height: 8),
                         Row(
                           children: [
@@ -363,7 +454,9 @@ class _FamilyTabState extends State<FamilyTab> {
                               child: OutlinedButton(
                                 onPressed: () =>
                                     _respondInvite(invite.id, false),
-                                child: const Text('Reject'),
+                                child: Text(
+                                  _tr(en: 'Reject', ms: 'Tolak', zh: '拒绝'),
+                                ),
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -375,7 +468,9 @@ class _FamilyTabState extends State<FamilyTab> {
                                   backgroundColor: const Color(0xFF2E7D32),
                                   foregroundColor: Colors.white,
                                 ),
-                                child: const Text('Accept'),
+                                child: Text(
+                                  _tr(en: 'Accept', ms: 'Terima', zh: '接受'),
+                                ),
                               ),
                             ),
                           ],
@@ -386,11 +481,11 @@ class _FamilyTabState extends State<FamilyTab> {
                 ),
               ),
             const SizedBox(height: 20),
-            const Text(
-              'Family Members',
+            Text(
+              _tr(en: 'Family Members', ms: 'Ahli Keluarga', zh: '家庭成员'),
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF1E293B),
+                color: titleColor,
               ),
             ),
             const SizedBox(height: 10),
@@ -399,7 +494,7 @@ class _FamilyTabState extends State<FamilyTab> {
                 height: 260,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  border: Border.all(color: borderColor),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: FlutterMap(
@@ -472,7 +567,14 @@ class _FamilyTabState extends State<FamilyTab> {
             if (_loading)
               const SizedBox.shrink()
             else if (_members.isEmpty)
-              const Text('No family members connected yet.')
+              Text(
+                _tr(
+                  en: 'No family members connected yet.',
+                  ms: 'Belum ada ahli keluarga yang disambungkan.',
+                  zh: '尚未连接任何家庭成员。',
+                ),
+                style: TextStyle(color: mutedText),
+              )
             else
               ..._members.map((member) {
                 final zoneType = _zoneStatusFor(member);
@@ -482,6 +584,7 @@ class _FamilyTabState extends State<FamilyTab> {
                   _ => const Color(0xFF2E7D32),
                 };
                 return Card(
+                  color: cardBg,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
@@ -517,10 +620,14 @@ class _FamilyTabState extends State<FamilyTab> {
                               Text(
                                 member.hasLocation
                                     ? '${_placeNames[member.userId] ?? '${member.latitude!.toStringAsFixed(4)}, ${member.longitude!.toStringAsFixed(4)}'}'
-                                          '  ·  Updated ${_timeAgo(member.updatedAt)}'
-                                    : 'Location not available yet',
-                                style: const TextStyle(
-                                  color: Color(0xFF64748B),
+                                          '  ·  ${_tr(en: 'Updated', ms: 'Dikemas kini', zh: '更新')} ${_timeAgo(member.updatedAt)}'
+                                    : _tr(
+                                        en: 'Location not available yet',
+                                        ms: 'Lokasi belum tersedia',
+                                        zh: '位置尚不可用',
+                                      ),
+                                style: TextStyle(
+                                  color: mutedText,
                                   fontSize: 12,
                                 ),
                               ),

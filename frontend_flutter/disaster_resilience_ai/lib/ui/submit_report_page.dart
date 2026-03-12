@@ -49,6 +49,10 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
     final language = AppLanguageScope.of(context).language;
     return switch (language) {
       AppLanguage.english => en,
+      AppLanguage.indonesian => (() {
+        final id = indonesianText(en);
+        return id == en ? ms : id;
+      })(),
       AppLanguage.malay => ms,
       AppLanguage.chinese => zh,
     };
@@ -108,9 +112,9 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
   Future<void> _pickAndUploadMedia({required bool video}) async {
     if (widget.accessToken.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in again.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please sign in again.')));
       return;
     }
 
@@ -147,16 +151,17 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
           contentType: contentType,
         );
         final url = res['url']?.toString();
-        final mediaType = res['media_type']?.toString() ?? (video ? 'video' : 'image');
+        final mediaType =
+            res['media_type']?.toString() ?? (video ? 'video' : 'image');
 
         if (url != null && url.isNotEmpty && mounted) {
           setState(() => _media.add({'url': url, 'type': mediaType}));
         }
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
       }
     }
   }
@@ -164,9 +169,9 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
   Future<void> _submitReport() async {
     if (widget.accessToken.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in again.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please sign in again.')));
       return;
     }
 
@@ -202,9 +207,9 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Submit failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Submit failed: $e')));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -219,7 +224,8 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
       _selectedLat = lat;
       _selectedLon = lon;
       _isCurrentLocation = false;
-      _selectedLocationName = knownName ??
+      _selectedLocationName =
+          knownName ??
           'Near ${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}';
     });
     if (knownName != null && knownName.isNotEmpty) return;
@@ -428,13 +434,9 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _tr(
-                      en: 'Choose Location',
-                      ms: 'Pilih Lokasi',
-                      zh: '选择位置',
-                    ),
+                    _tr(en: 'Choose Location', ms: 'Pilih Lokasi', zh: '选择位置'),
                     style: TextStyle(
-                      fontSize: 17,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: titleColor,
                     ),
@@ -558,10 +560,14 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final accent = isDark ? const Color(0xFF86C77C) : primary;
     final bg = isDark ? const Color(0xFF0F140F) : const Color(0xFFF0F2F5);
-    final sectionLabel = isDark ? const Color(0xFF97A09B) : const Color(0xFF64748B);
+    final sectionLabel = isDark
+        ? const Color(0xFF97A09B)
+        : const Color(0xFF64748B);
     final border = isDark ? const Color(0xFF2A332A) : const Color(0xFFE2E8F0);
     final cardBg = isDark ? const Color(0xFF1D251D) : Colors.white;
-    final titleColor = isDark ? const Color(0xFFE5E7EB) : const Color(0xFF0F172A);
+    final titleColor = isDark
+        ? const Color(0xFFE5E7EB)
+        : const Color(0xFF0F172A);
 
     return Scaffold(
       backgroundColor: bg,
@@ -621,7 +627,11 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                 _buildIncidentCard(
                   index: 0,
                   icon: Icons.water_drop,
-                  label: _tr(en: 'Rising Water', ms: 'Air Meningkat', zh: '水位上涨'),
+                  label: _tr(
+                    en: 'Rising Water',
+                    ms: 'Air Meningkat',
+                    zh: '水位上涨',
+                  ),
                   border: border,
                   cardBg: cardBg,
                   isDark: isDark,
@@ -630,7 +640,11 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                 _buildIncidentCard(
                   index: 1,
                   icon: Icons.texture,
-                  label: _tr(en: 'Cracks in Soil', ms: 'Retakan Tanah', zh: '土壤裂缝'),
+                  label: _tr(
+                    en: 'Cracks in Soil',
+                    ms: 'Retakan Tanah',
+                    zh: '土壤裂缝',
+                  ),
                   border: border,
                   cardBg: cardBg,
                   isDark: isDark,
@@ -639,7 +653,11 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                 _buildIncidentCard(
                   index: 2,
                   icon: Icons.landslide,
-                  label: _tr(en: 'Land Movement', ms: 'Pergerakan Tanah', zh: '地面位移'),
+                  label: _tr(
+                    en: 'Land Movement',
+                    ms: 'Pergerakan Tanah',
+                    zh: '地面位移',
+                  ),
                   border: border,
                   cardBg: cardBg,
                   isDark: isDark,
@@ -648,7 +666,11 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                 _buildIncidentCard(
                   index: 3,
                   icon: Icons.more_horiz,
-                  label: _tr(en: 'Other Concern', ms: 'Lain-lain Kebimbangan', zh: '其他问题'),
+                  label: _tr(
+                    en: 'Other Concern',
+                    ms: 'Lain-lain Kebimbangan',
+                    zh: '其他问题',
+                  ),
                   border: border,
                   cardBg: cardBg,
                   isDark: isDark,
@@ -660,10 +682,14 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF3A2020) : const Color(0xFFFFF0F0),
+                color: isDark
+                    ? const Color(0xFF3A2020)
+                    : const Color(0xFFFFF0F0),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: isDark ? const Color(0xFF7F1D1D) : const Color(0xFFFFCDD2),
+                  color: isDark
+                      ? const Color(0xFF7F1D1D)
+                      : const Color(0xFFFFCDD2),
                   width: 1,
                 ),
               ),
@@ -675,7 +701,10 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                       color: isDark ? const Color(0xFFB91C1C) : Colors.red[600],
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Icon(Icons.share_location, color: Colors.white),
+                    child: const Icon(
+                      Icons.share_location,
+                      color: Colors.white,
+                    ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -683,18 +712,30 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _tr(en: 'Vulnerable Person Help', ms: 'Bantu Golongan Rentan', zh: '弱势人群援助'),
+                          _tr(
+                            en: 'Vulnerable Person Help',
+                            ms: 'Bantu Golongan Rentan',
+                            zh: '弱势人群援助',
+                          ),
                           style: TextStyle(
-                            color: isDark ? const Color(0xFFFCA5A5) : const Color(0xFF1E293B),
+                            color: isDark
+                                ? const Color(0xFFFCA5A5)
+                                : const Color(0xFF1E293B),
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          _tr(en: 'Priority rescue alert', ms: 'Amaran penyelamatan keutamaan', zh: '优先救援提醒'),
+                          _tr(
+                            en: 'Priority rescue alert',
+                            ms: 'Amaran penyelamatan keutamaan',
+                            zh: '优先救援提醒',
+                          ),
                           style: TextStyle(
-                            color: isDark ? const Color(0xFFFECACA) : Colors.grey,
+                            color: isDark
+                                ? const Color(0xFFFECACA)
+                                : Colors.grey,
                             fontSize: 12,
                           ),
                         ),
@@ -704,10 +745,18 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                   Switch(
                     value: _vulnerableHelp,
                     onChanged: (val) => setState(() => _vulnerableHelp = val),
-                    activeThumbColor: isDark ? const Color(0xFFFEE2E2) : Colors.white,
-                    activeTrackColor: isDark ? const Color(0xFFB91C1C) : Colors.red[400],
-                    inactiveThumbColor: isDark ? const Color(0xFF94A3B8) : Colors.white,
-                    inactiveTrackColor: isDark ? const Color(0xFF475569) : Colors.grey[300],
+                    activeThumbColor: isDark
+                        ? const Color(0xFFFEE2E2)
+                        : Colors.white,
+                    activeTrackColor: isDark
+                        ? const Color(0xFFB91C1C)
+                        : Colors.red[400],
+                    inactiveThumbColor: isDark
+                        ? const Color(0xFF94A3B8)
+                        : Colors.white,
+                    inactiveTrackColor: isDark
+                        ? const Color(0xFF475569)
+                        : Colors.grey[300],
                   ),
                 ],
               ),
@@ -726,7 +775,10 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
             GestureDetector(
               onTap: _showLocationSheet,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: cardBg,
                   borderRadius: BorderRadius.circular(12),
@@ -753,7 +805,10 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                     ),
                     if (!_isCurrentLocation) ...[
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFF2E7D32).withAlpha(28),
                           borderRadius: BorderRadius.circular(8),
@@ -824,7 +879,8 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                     .map(
                       (entry) => Chip(
                         label: Text('${entry.value['type']} ${entry.key + 1}'),
-                        onDeleted: () => setState(() => _media.removeAt(entry.key)),
+                        onDeleted: () =>
+                            setState(() => _media.removeAt(entry.key)),
                       ),
                     )
                     .toList(),
@@ -846,12 +902,19 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
               maxLength: 60,
               style: TextStyle(color: titleColor),
               decoration: InputDecoration(
-                hintText: _tr(en: 'Title (optional)', ms: 'Tajuk (pilihan)', zh: '标题（可选）'),
+                hintText: _tr(
+                  en: 'Title (optional)',
+                  ms: 'Tajuk (pilihan)',
+                  zh: '标题（可选）',
+                ),
                 hintStyle: TextStyle(color: sectionLabel),
                 filled: true,
                 fillColor: cardBg,
                 counterText: '',
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide(color: border),
@@ -897,7 +960,9 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                 onPressed: _submitting ? null : _submitReport,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isDark ? const Color(0xFF86C77C) : accent,
-                  foregroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                  foregroundColor: isDark
+                      ? const Color(0xFF0F172A)
+                      : Colors.white,
                   disabledBackgroundColor: isDark
                       ? const Color(0xFF4F6252)
                       : const Color(0xFF9CA3AF),
@@ -916,11 +981,17 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: isDark ? const Color(0xFF0F172A) : Colors.white,
+                          color: isDark
+                              ? const Color(0xFF0F172A)
+                              : Colors.white,
                         ),
                       )
                     : Text(
-                        _tr(en: 'Submit Report', ms: 'Hantar Laporan', zh: '提交报告'),
+                        _tr(
+                          en: 'Submit Report',
+                          ms: 'Hantar Laporan',
+                          zh: '提交报告',
+                        ),
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
@@ -953,7 +1024,9 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: selected
-                ? (isDark ? selectedColor.withAlpha(40) : selectedColor.withAlpha(18))
+                ? (isDark
+                      ? selectedColor.withAlpha(40)
+                      : selectedColor.withAlpha(18))
                 : cardBg,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
@@ -969,7 +1042,9 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                 size: 30,
                 color: selected
                     ? selectedColor
-                    : (isDark ? const Color(0xFFB8C2BA) : const Color(0xFF64748B)),
+                    : (isDark
+                          ? const Color(0xFFB8C2BA)
+                          : const Color(0xFF64748B)),
               ),
               const SizedBox(height: 8),
               Text(
@@ -980,7 +1055,9 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
                   fontWeight: FontWeight.w700,
                   color: selected
                       ? selectedColor
-                      : (isDark ? const Color(0xFFE5E7EB) : const Color(0xFF0F172A)),
+                      : (isDark
+                            ? const Color(0xFFE5E7EB)
+                            : const Color(0xFF0F172A)),
                 ),
               ),
             ],
@@ -1005,7 +1082,9 @@ class _SubmitReportPageState extends State<SubmitReportPage> {
         padding: const EdgeInsets.symmetric(vertical: 14),
         side: BorderSide(color: border),
         backgroundColor: isDark ? const Color(0xFF1D251D) : Colors.white,
-        foregroundColor: isDark ? const Color(0xFFE5E7EB) : const Color(0xFF1E293B),
+        foregroundColor: isDark
+            ? const Color(0xFFE5E7EB)
+            : const Color(0xFF1E293B),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );

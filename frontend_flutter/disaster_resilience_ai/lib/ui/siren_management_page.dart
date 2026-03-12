@@ -20,10 +20,16 @@ class _SirenManagementPageState extends State<SirenManagementPage> {
 
   bool get _isMalay =>
       AppLanguageScope.of(context).language == AppLanguage.malay;
+  bool get _isIndonesian =>
+      AppLanguageScope.of(context).language == AppLanguage.indonesian;
   bool get _isChinese =>
       AppLanguageScope.of(context).language == AppLanguage.chinese;
 
   String _tr({required String en, required String ms, String? zh}) {
+    if (_isIndonesian) {
+      final id = indonesianText(en);
+      return id == en ? ms : id;
+    }
     if (_isMalay) return ms;
     if (_isChinese) return zh ?? en;
     return en;
@@ -318,21 +324,32 @@ class _SirenManagementPageState extends State<SirenManagementPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = isDark
+        ? const Color(0xFFE5E7EB)
+        : const Color(0xFF111827);
 
     return Scaffold(
       appBar: AppBar(
+        centerTitle: false,
         title: Text(
           _tr(
             en: 'IoT Siren Management',
             ms: 'Pengurusan Siren IoT',
             zh: 'IoT警报器管理',
           ),
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: titleColor,
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showRegisterDialog,
-        icon: const Icon(Icons.add),
-        label: Text(_tr(en: 'Add Siren', ms: 'Tambah Siren', zh: '添加警报器')),
+        backgroundColor: const Color(0xFF2E7D32),
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add_rounded),
+        label: Text(_tr(en: 'Siren', ms: 'Siren', zh: '警报器')),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

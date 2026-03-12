@@ -339,8 +339,11 @@ class _LearnModulePageState extends State<LearnModulePage>
     // Welcome message in chatbot tab
     _msgs.add(
       _ChatMsg(
-        text:
-            '👋 Hi! I\'m your **${_mod.heroTitle}** assistant. Ask me anything about ${widget.hazardType} safety, preparedness or response.',
+        text: _tr(
+          en: '👋 Hi! I\'m your **${_heroTitleLocalized()}** assistant. Ask me anything about ${_hazardLabel()} safety, preparedness or response.',
+          ms: '👋 Hai! Saya pembantu **${_heroTitleLocalized()}** anda. Tanya saya apa sahaja tentang keselamatan, kesiapsiagaan atau respons ${_hazardLabel()}.',
+          zh: '👋 你好！我是你的 **${_heroTitleLocalized()}** 助手。你可以询问任何关于${_hazardLabel()}安全、准备或应对的问题。',
+        ),
         sender: _Sender.bot,
       ),
     );
@@ -348,9 +351,51 @@ class _LearnModulePageState extends State<LearnModulePage>
 
   String _tr({required String en, required String ms, String? zh}) {
     final lang = AppLanguageScope.of(context).language;
+    if (lang == AppLanguage.indonesian) {
+      final id = indonesianText(en);
+      return id == en ? ms : id;
+    }
     if (lang == AppLanguage.malay) return ms;
     if (lang == AppLanguage.chinese) return zh ?? en;
     return en;
+  }
+
+  String _hazardLabel() {
+    return switch (widget.hazardType) {
+      'flood' => _tr(en: 'flood', ms: 'banjir', zh: '洪水'),
+      'landslide' => _tr(en: 'landslide', ms: 'tanah runtuh', zh: '山体滑坡'),
+      'earthquake' => _tr(en: 'earthquake', ms: 'gempa bumi', zh: '地震'),
+      'storm' => _tr(en: 'storm', ms: 'ribut', zh: '风暴'),
+      'tsunami' => _tr(en: 'tsunami', ms: 'tsunami', zh: '海啸'),
+      'haze' => _tr(en: 'haze', ms: 'jerebu', zh: '雾霾'),
+      _ => widget.hazardType,
+    };
+  }
+
+  String _heroTitleLocalized() {
+    return switch (widget.hazardType) {
+      'flood' => _tr(en: 'Flood Preparedness', ms: 'Kesiapsiagaan Banjir', zh: '洪水应对准备'),
+      'landslide' => _tr(en: 'Landslide Safety', ms: 'Keselamatan Tanah Runtuh', zh: '山体滑坡安全'),
+      'earthquake' => _tr(en: 'Earthquake Response', ms: 'Respons Gempa Bumi', zh: '地震应对'),
+      'storm' => _tr(en: 'Storm & Typhoon', ms: 'Ribut & Taufan', zh: '风暴与台风'),
+      'tsunami' => _tr(en: 'Tsunami Awareness', ms: 'Kesedaran Tsunami', zh: '海啸认知'),
+      'haze' => _tr(en: 'Haze & Air Quality', ms: 'Jerebu & Kualiti Udara', zh: '雾霾与空气质量'),
+      _ => _mod.heroTitle,
+    };
+  }
+
+  String _phaseTitle(_PhaseContent phase) {
+    if (identical(phase, _mod.before)) {
+      return _tr(en: 'Before', ms: 'Sebelum', zh: '之前');
+    }
+    if (identical(phase, _mod.during)) {
+      return _tr(en: 'During', ms: 'Semasa', zh: '期间');
+    }
+    return _tr(en: 'After', ms: 'Selepas', zh: '之后');
+  }
+
+  List<String> _localizedSuggestions() {
+    return _mod.chatSuggestions.map((s) => _tr(en: s, ms: s, zh: s)).toList();
   }
 
   @override
@@ -418,7 +463,7 @@ class _LearnModulePageState extends State<LearnModulePage>
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          _mod.heroTitle,
+          _heroTitleLocalized(),
           style: TextStyle(
             color: titleColor,
             fontWeight: FontWeight.bold,
@@ -440,11 +485,11 @@ class _LearnModulePageState extends State<LearnModulePage>
                     : Colors.grey,
                 indicatorColor: _mod.color,
                 tabAlignment: TabAlignment.start,
-                tabs: const [
-                  Tab(text: 'Before'),
-                  Tab(text: 'During'),
-                  Tab(text: 'After'),
-                  Tab(text: 'Ask AI'),
+                tabs: [
+                  Tab(text: _tr(en: 'Before', ms: 'Sebelum', zh: '之前')),
+                  Tab(text: _tr(en: 'During', ms: 'Semasa', zh: '期间')),
+                  Tab(text: _tr(en: 'After', ms: 'Selepas', zh: '之后')),
+                  Tab(text: _tr(en: 'Ask AI', ms: 'Tanya AI', zh: '问AI')),
                 ],
               ),
             ],
@@ -464,12 +509,12 @@ class _LearnModulePageState extends State<LearnModulePage>
         onPressed: () => Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => QuizPage(
-              hazardType: widget.hazardType,
-              hazardTitle: _mod.heroTitle,
-              themeColor: _mod.color,
+              builder: (_) => QuizPage(
+                hazardType: widget.hazardType,
+                hazardTitle: _heroTitleLocalized(),
+                themeColor: _mod.color,
+              ),
             ),
-          ),
         ),
         backgroundColor: _mod.color,
         icon: const Icon(Icons.quiz_rounded, color: Colors.white),
@@ -511,7 +556,7 @@ class _LearnModulePageState extends State<LearnModulePage>
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  phase.title,
+                  _phaseTitle(phase),
                   style: TextStyle(
                     color: titleColor,
                     fontWeight: FontWeight.bold,
@@ -587,7 +632,11 @@ class _LearnModulePageState extends State<LearnModulePage>
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Have questions? Ask the AI assistant →',
+                    _tr(
+                      en: 'Have questions? Ask the AI assistant →',
+                      ms: 'Ada soalan? Tanya pembantu AI →',
+                      zh: '有疑问吗？问AI助手 →',
+                    ),
                     style: TextStyle(
                       color: _mod.color,
                       fontWeight: FontWeight.w600,
@@ -645,7 +694,11 @@ class _LearnModulePageState extends State<LearnModulePage>
                       fontSize: 14,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'Ask about ${widget.hazardType} safety…',
+                      hintText: _tr(
+                        en: 'Ask about ${_hazardLabel()} safety…',
+                        ms: 'Tanya tentang keselamatan ${_hazardLabel()}…',
+                        zh: '询问有关${_hazardLabel()}安全的问题…',
+                      ),
                       hintStyle: TextStyle(color: hintColor, fontSize: 14),
                       filled: true,
                       fillColor: isDark
@@ -784,10 +837,10 @@ class _LearnModulePageState extends State<LearnModulePage>
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemCount: _mod.chatSuggestions.length,
+        itemCount: _localizedSuggestions().length,
         itemBuilder: (ctx, i) => ActionChip(
           label: Text(
-            _mod.chatSuggestions[i],
+            _localizedSuggestions()[i],
             style: TextStyle(
               fontSize: 12,
               color: chipText,
@@ -799,7 +852,7 @@ class _LearnModulePageState extends State<LearnModulePage>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
-          onPressed: () => _send(_mod.chatSuggestions[i]),
+          onPressed: () => _send(_localizedSuggestions()[i]),
         ),
       ),
     );
