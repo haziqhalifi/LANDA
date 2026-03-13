@@ -82,7 +82,7 @@ async def list_sirens(
 async def get_siren(siren_id: str) -> SirenOut:
     rec = await asyncio.to_thread(siren_db.get_siren, siren_id)
     if not rec:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Siren not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Siren not found")
     return SirenOut(**rec)
 
 
@@ -100,7 +100,7 @@ async def trigger_siren(
 ) -> SirenTriggerResult:
     siren = await asyncio.to_thread(siren_db.get_siren, siren_id)
     if not siren:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Siren not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Siren not found")
     if siren["status"] in ("offline", "maintenance"):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -143,7 +143,7 @@ async def stop_siren(
 ) -> SirenOut:
     siren = await asyncio.to_thread(siren_db.get_siren, siren_id)
     if not siren:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Siren not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Siren not found")
 
     # Stop all active activations
     active = await asyncio.to_thread(siren_db.get_active_activations, siren_id)
@@ -169,7 +169,7 @@ async def update_siren_status(
 ) -> SirenOut:
     rec = await asyncio.to_thread(siren_db.update_siren_status, siren_id, body.status)
     if not rec:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Siren not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Siren not found")
     return SirenOut(**rec)
 
 

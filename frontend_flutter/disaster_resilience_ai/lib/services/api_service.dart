@@ -1,19 +1,23 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io' show SocketException;
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthResult {
   final String accessToken;
+  final String? refreshToken;
   final String userId;
   final String username;
   final String email;
 
   const AuthResult({
     required this.accessToken,
+    this.refreshToken,
     required this.userId,
     required this.username,
     required this.email,
@@ -23,6 +27,7 @@ class AuthResult {
     final user = json['user'] as Map<String, dynamic>;
     return AuthResult(
       accessToken: json['access_token'] as String,
+      refreshToken: json['refresh_token'] as String?,
       userId: user['id'] as String,
       username: user['username'] as String,
       email: user['email'] as String,
@@ -32,39 +37,145 @@ class AuthResult {
 
 /// Service class for communicating with the FastAPI backend.
 class ApiService {
-  static const Duration _requestTimeout = Duration(seconds: 12);
+  static const Duration _requestTimeout = Duration(seconds: 15);
+  static const int _maxRetries = 3;
+  static const Duration _retryDelay = Duration(milliseconds: 800);
+  static const String _prefsKey = 'api_base_url';
+  // Known stale IP prefixes to clear from SharedPreferences on startup
+  static const List<String> _staleIpPrefixes = ['192.168.56.', '10.87.52.'];
   static const String _baseUrlOverride = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: '',
   );
 
+  /// Runtime override from SharedPreferences (set via [setBaseUrl] or [initFromPrefs]).
+  static String? _storedBaseUrl;
+
   /// Base URL of the FastAPI server.
   ///
-  /// Override with `--dart-define=API_BASE_URL=http://<host>:8000`.
-  /// - Web (Chrome/Edge): uses localhost directly.
-  /// - Android emulator: 10.0.2.2 maps to the host machine's localhost.
-  /// - Desktop/iOS: localhost works when backend runs on same machine.
+  /// Priority: 1) dart-define API_BASE_URL, 2) stored in SharedPreferences,
+  /// 3) platform default (localhost / 10.0.2.2 for Android emulator).
   static String get baseUrl {
     if (_baseUrlOverride.trim().isNotEmpty) {
       return _baseUrlOverride.trim();
+    }
+    if (_storedBaseUrl != null && _storedBaseUrl!.trim().isNotEmpty) {
+      return _storedBaseUrl!.trim();
     }
     if (kIsWeb) {
       return 'http://localhost:8000';
     }
     if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:8000';
+      return 'http://10.0.2.2:8000'; // emulator default; real devices use --dart-define=API_BASE_URL
     }
     return 'http://localhost:8000';
+  }
+
+  /// Load stored API URL from SharedPreferences. Call at app startup.
+  static Future<void> initFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_prefsKey);
+    // Clear stale saved URLs pointing to known old IPs
+    if (saved != null && _staleIpPrefixes.any(saved.contains)) {
+      await prefs.remove(_prefsKey);
+      _storedBaseUrl = null;
+    } else {
+      _storedBaseUrl = saved;
+    }
+  }
+
+  /// Save API URL and use it for all subsequent requests.
+  /// Use when running on a physical device or when localhost fails.
+  static Future<void> setBaseUrl(String url) async {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return;
+    _storedBaseUrl = trimmed;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefsKey, trimmed);
+  }
+
+  /// Clear the stored API URL (revert to platform default).
+  static Future<void> clearStoredBaseUrl() async {
+    _storedBaseUrl = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefsKey);
+  }
+
+  // ── Token management ─────────────────────────────────────────────────────
+
+  static const _refreshTokenPrefsKey = 'auth_refresh_token';
+
+  /// The current live access token (may be newer than what widgets hold).
+  static String _liveAccessToken = '';
+
+  /// Called at login / session restore to seed the live token + refresh token.
+  static Future<void> initTokens({
+    required String accessToken,
+    String? refreshToken,
+  }) async {
+    _liveAccessToken = accessToken;
+    if (refreshToken != null && refreshToken.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_refreshTokenPrefsKey, refreshToken);
+    }
+  }
+
+  /// Returns the current live access token. Use this in API calls so they
+  /// always use the most recently refreshed token.
+  static String get liveAccessToken => _liveAccessToken;
+
+  /// Exchange the stored refresh token for a new access token.
+  /// Returns the new [AuthResult] on success, null if refresh fails.
+  static Future<AuthResult?> tryRefreshSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedRefresh = prefs.getString(_refreshTokenPrefsKey);
+    if (storedRefresh == null || storedRefresh.isEmpty) return null;
+
+    try {
+      final client = http.Client();
+      final response = await client
+          .post(
+            Uri.parse('$baseUrl/api/v1/auth/refresh'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'refresh_token': storedRefresh}),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final result = AuthResult.fromJson(
+            jsonDecode(response.body) as Map<String, dynamic>);
+        _liveAccessToken = result.accessToken;
+        if (result.refreshToken != null && result.refreshToken!.isNotEmpty) {
+          await prefs.setString(_refreshTokenPrefsKey, result.refreshToken!);
+        }
+        return result;
+      }
+    } catch (_) {
+      // Refresh failed — caller should redirect to login
+    }
+    return null;
   }
 
   final http.Client _client;
 
   ApiService({http.Client? client}) : _client = client ?? http.Client();
 
+  /// Check if backend is reachable. Uses root health endpoint.
+  Future<bool> checkConnection() async {
+    try {
+      final response = await _withRetry(
+        () => _client.get(Uri.parse('$baseUrl/')).timeout(const Duration(seconds: 5)),
+      );
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Ping the alerts service to verify connectivity.
   Future<Map<String, dynamic>> ping() async {
-    final response = await _client.get(
-      Uri.parse('$baseUrl/api/v1/alerts/ping'),
+    final response = await _withRetry(
+      () => _client.get(Uri.parse('$baseUrl/api/v1/alerts/ping')).timeout(_requestTimeout),
     );
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -74,10 +185,9 @@ class ApiService {
 
   /// Request a risk prediction from the backend.
   Future<Map<String, dynamic>> predictRisk(List<double> features) async {
-    final response = await _client.post(
+    final response = await _postWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/alerts/predict'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'features': features}),
+      body: {'features': features},
     );
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -168,37 +278,70 @@ class ApiService {
     return 'Request failed with status ${response.statusCode}';
   }
 
+  /// Execute a request with retries for transient connection failures.
+  Future<T> _withRetry<T>(Future<T> Function() fn) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < _maxRetries; attempt++) {
+      try {
+        return await fn();
+      } on SocketException catch (e) {
+        lastError = e;
+        if (attempt < _maxRetries - 1) {
+          await Future<void>.delayed(_retryDelay);
+        }
+      } on TimeoutException catch (e) {
+        lastError = e;
+        if (attempt < _maxRetries - 1) {
+          await Future<void>.delayed(_retryDelay);
+        }
+      } on http.ClientException catch (e) {
+        lastError = e;
+        if (attempt < _maxRetries - 1) {
+          await Future<void>.delayed(_retryDelay);
+        }
+      }
+    }
+    // Distinguish "backend offline" from other network errors
+    if (lastError is SocketException) {
+      throw Exception('Backend offline. Make sure the server is running, then tap Retry.');
+    }
+    throw Exception(_connectivityErrorMessage());
+  }
+
   Future<http.Response> _postWithNetworkHandling(
     Uri uri, {
     required Map<String, dynamic> body,
     Map<String, String>? headers,
   }) async {
-    try {
-      return await _client
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json', ...?headers},
-            body: jsonEncode(body),
-          )
-          .timeout(_requestTimeout);
-    } on TimeoutException {
-      throw Exception(_connectivityErrorMessage());
-    } on http.ClientException {
-      throw Exception(_connectivityErrorMessage());
-    }
+    return _withRetry(() => _client
+        .post(
+          uri,
+          headers: {'Content-Type': 'application/json', ...?headers},
+          body: jsonEncode(body),
+        )
+        .timeout(_requestTimeout));
   }
 
   Future<http.Response> _getWithNetworkHandling(
     Uri uri, {
     Map<String, String>? headers,
   }) async {
-    try {
-      return await _client.get(uri, headers: headers).timeout(_requestTimeout);
-    } on TimeoutException {
-      throw Exception(_connectivityErrorMessage());
-    } on http.ClientException {
-      throw Exception(_connectivityErrorMessage());
-    }
+    return _withRetry(
+        () => _client.get(uri, headers: headers).timeout(_requestTimeout));
+  }
+
+  Future<http.Response> _putWithNetworkHandling(
+    Uri uri, {
+    required Object body,
+    Map<String, String>? headers,
+  }) async {
+    return _withRetry(() => _client
+        .put(
+          uri,
+          headers: {'Content-Type': 'application/json', ...?headers},
+          body: body is String ? body : jsonEncode(body),
+        )
+        .timeout(_requestTimeout));
   }
 
   Future<http.Response> _patchWithNetworkHandling(
@@ -206,24 +349,18 @@ class ApiService {
     required Map<String, dynamic> body,
     Map<String, String>? headers,
   }) async {
-    try {
-      return await _client
-          .patch(
-            uri,
-            headers: {'Content-Type': 'application/json', ...?headers},
-            body: jsonEncode(body),
-          )
-          .timeout(_requestTimeout);
-    } on TimeoutException {
-      throw Exception(_connectivityErrorMessage());
-    } on http.ClientException {
-      throw Exception(_connectivityErrorMessage());
-    }
+    return _withRetry(() => _client
+        .patch(
+          uri,
+          headers: {'Content-Type': 'application/json', ...?headers},
+          body: jsonEncode(body),
+        )
+        .timeout(_requestTimeout));
   }
 
   String _connectivityErrorMessage() {
-    return 'Cannot reach backend at $baseUrl. Ensure FastAPI is running and '
-        'use --dart-define=API_BASE_URL=http://<your-host>:8000 if needed.';
+    return 'Cannot reach backend at $baseUrl. Tap "Set Server URL" to configure, '
+        'or ensure FastAPI is running (.\start_backend.ps1).';
   }
 
   // ── Hyper-Local Early Warnings ──────────────────────────────────────────
@@ -241,7 +378,7 @@ class ApiService {
         'longitude': longitude.toString(),
       },
     );
-    final response = await _client.get(uri);
+    final response = await _getWithNetworkHandling(uri);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -261,7 +398,7 @@ class ApiService {
     final uri = Uri.parse(
       '$baseUrl/api/v1/warnings',
     ).replace(queryParameters: params);
-    final response = await _client.get(uri);
+    final response = await _getWithNetworkHandling(uri);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -270,7 +407,7 @@ class ApiService {
 
   /// Get a single warning by ID.
   Future<Map<String, dynamic>> fetchWarning(String warningId) async {
-    final response = await _client.get(
+    final response = await _getWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/warnings/$warningId'),
     );
     if (response.statusCode == 200) {
@@ -322,18 +459,29 @@ class ApiService {
     required double latitude,
     required double longitude,
   }) async {
-    final response = await _client.put(
+    final response = await _withRetry(() => _client.put(
       Uri.parse('$baseUrl/api/v1/devices/me/location'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $accessToken',
       },
       body: jsonEncode({'latitude': latitude, 'longitude': longitude}),
-    );
+    ).timeout(_requestTimeout));
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
     throw Exception('Failed to update location: ${response.statusCode}');
+  }
+
+  /// Fetch the current user's stored device record (includes phone_number).
+  Future<Map<String, dynamic>> getDevice(String accessToken) async {
+    final response = await _getWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/devices/me/device'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    if (response.statusCode == 404) return {};
+    throw Exception(_extractErrorMessage(response));
   }
 
   /// Register device for push notifications and/or SMS fallback.
@@ -350,18 +498,15 @@ class ApiService {
       payload['phone_number'] = phoneNumber;
     }
 
-    final response = await _client.put(
+    final response = await _putWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/devices/me/device'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $accessToken',
-      },
-      body: jsonEncode(payload),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: payload,
     );
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
-    throw Exception('Failed to register device: ${response.statusCode}');
+    throw Exception(_extractErrorMessage(response));
   }
 
   // ── AI Risk Mapping ──────────────────────────────────────────────────────
@@ -374,7 +519,7 @@ class ApiService {
     final uri = Uri.parse(
       '$baseUrl/api/v1/risk-map',
     ).replace(queryParameters: params.isNotEmpty ? params : null);
-    final response = await _client.get(uri);
+    final response = await _getWithNetworkHandling(uri);
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -419,7 +564,7 @@ class ApiService {
 
   /// Fetch the current user's profile information.
   Future<Map<String, dynamic>> fetchProfile(String accessToken) async {
-    final response = await _client.get(
+    final response = await _getWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/profile/me'),
       headers: {'Authorization': 'Bearer $accessToken'},
     );
@@ -434,13 +579,10 @@ class ApiService {
     required String accessToken,
     required Map<String, dynamic> profileData,
   }) async {
-    final response = await _client.put(
+    final response = await _putWithNetworkHandling(
       Uri.parse('$baseUrl/api/v1/profile/me'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $accessToken',
-      },
-      body: jsonEncode(profileData),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: profileData,
     );
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -629,22 +771,23 @@ class ApiService {
     required String filename,
     required String contentType,
   }) async {
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$baseUrl/api/v1/reports/media/upload'),
-    );
-    request.headers['Authorization'] = 'Bearer $accessToken';
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        'file',
-        bytes,
-        filename: filename,
-        contentType: _parseMediaType(contentType),
-      ),
-    );
-
-    final streamed = await request.send().timeout(_requestTimeout);
-    final response = await http.Response.fromStream(streamed);
+    final response = await _withRetry(() async {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/api/v1/reports/media/upload'),
+      );
+      request.headers['Authorization'] = 'Bearer $accessToken';
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: filename,
+          contentType: _parseMediaType(contentType),
+        ),
+      );
+      final streamed = await request.send().timeout(_requestTimeout);
+      return http.Response.fromStream(streamed);
+    });
     if (response.statusCode == 201) {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
@@ -735,10 +878,203 @@ class ApiService {
     return null;
   }
 
-  // ── IoT Siren endpoints ────────────────────────────────────────────────
+  // ── Preparedness ──────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> fetchChecklist(String accessToken) async {
+    final response = await _getWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/preparedness/checklist'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body);
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<void> toggleChecklistItem(String accessToken, String itemId, bool completed) async {
+    try {
+      final response = await _client.patch(
+        Uri.parse('$baseUrl/api/v1/preparedness/checklist/$itemId/toggle'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode({'completed': completed}),
+      ).timeout(_requestTimeout);
+      if (response.statusCode != 200) throw Exception(_extractErrorMessage(response));
+    } on TimeoutException {
+      throw Exception(_connectivityErrorMessage());
+    } on http.ClientException {
+      throw Exception(_connectivityErrorMessage());
+    }
+  }
+
+  Future<List<dynamic>> fetchEducationalTopics(String accessToken) async {
+    final response = await _getWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/preparedness/education'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body) as List;
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<void> markTopicViewed(String accessToken, String topicId) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/preparedness/education/$topicId/view'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {},
+    );
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception(_extractErrorMessage(response));
+    }
+  }
+
+  // ── Family Groups ─────────────────────────────────────────────────────────
+
+  Future<List<dynamic>> fetchFamilyGroups(String accessToken) async {
+    final response = await _getWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/family/groups'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body) as List;
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<Map<String, dynamic>> createFamilyGroup({
+    required String accessToken,
+    required String name,
+    List<Map<String, String>> members = const [],
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/family/groups'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {
+        'name': name,
+        'members': members.map((m) => {
+          'name': m['name'] ?? '',
+          'phone_number': m['phone'] ?? m['phone_number'] ?? '',
+          'relationship': m['relationship'] ?? '',
+        }).toList(),
+      },
+    );
+    if (response.statusCode == 201) return jsonDecode(response.body);
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<void> deleteFamilyGroup({
+    required String accessToken,
+    required String groupId,
+  }) async {
+    try {
+      final response = await _client.delete(
+        Uri.parse('$baseUrl/api/v1/family/groups/$groupId'),
+        headers: {'Authorization': 'Bearer $accessToken'},
+      ).timeout(_requestTimeout);
+      if (response.statusCode != 204) throw Exception(_extractErrorMessage(response));
+    } on TimeoutException {
+      throw Exception(_connectivityErrorMessage());
+    } on http.ClientException {
+      throw Exception(_connectivityErrorMessage());
+    }
+  }
+
+  Future<Map<String, dynamic>> renameFamilyGroup({
+    required String accessToken,
+    required String groupId,
+    required String name,
+  }) async {
+    try {
+      final response = await _client.patch(
+        Uri.parse('$baseUrl/api/v1/family/groups/$groupId/rename'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode({'name': name}),
+      ).timeout(_requestTimeout);
+      if (response.statusCode == 200) return jsonDecode(response.body);
+      throw Exception(_extractErrorMessage(response));
+    } on TimeoutException {
+      throw Exception(_connectivityErrorMessage());
+    } on http.ClientException {
+      throw Exception(_connectivityErrorMessage());
+    }
+  }
+
+  Future<Map<String, dynamic>> addFamilyMember({
+    required String accessToken,
+    required String groupId,
+    required String name,
+    String? phone,
+    String? phoneNumber,
+    String? relationship,
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/family/members'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {
+        'group_id': groupId,
+        'name': name,
+        'phone_number': phoneNumber ?? phone ?? '',
+        'relationship': relationship ?? '',
+      },
+    );
+    if (response.statusCode == 201) return jsonDecode(response.body);
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  Future<void> deleteFamilyMember({
+    required String accessToken,
+    required String memberId,
+  }) async {
+    try {
+      final response = await _client.delete(
+        Uri.parse('$baseUrl/api/v1/family/members/$memberId'),
+        headers: {'Authorization': 'Bearer $accessToken'},
+      ).timeout(_requestTimeout);
+      if (response.statusCode != 204) throw Exception(_extractErrorMessage(response));
+    } on TimeoutException {
+      throw Exception(_connectivityErrorMessage());
+    } on http.ClientException {
+      throw Exception(_connectivityErrorMessage());
+    }
+  }
+
+  Future<Map<String, dynamic>> familyCheckin({
+    required String accessToken,
+    required String memberId,
+    required String status,
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/family/checkin'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {'member_id': memberId, 'status': status},
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body);
+    }
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  /// In-app safety self-checkin — reports the current user's own safety status.
+  /// The backend resolves the user's family_members row by their registered phone.
+  Future<Map<String, dynamic>> selfCheckin({
+    required String accessToken,
+    required String status,
+  }) async {
+    final response = await _postWithNetworkHandling(
+      Uri.parse('$baseUrl/api/v1/family/self-checkin'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+      body: {'member_id': '', 'status': status},
+    );
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body);
+    }
+    throw Exception(_extractErrorMessage(response));
+  }
+
+  // ── IoT Sirens ───────────────────────────────────────────────────────────
 
   Future<List<dynamic>> fetchSirens() async {
-    final response = await _client.get(Uri.parse('$baseUrl/api/v1/sirens/'));
+    final response = await _getWithNetworkHandling(Uri.parse('$baseUrl/api/v1/sirens/'));
     if (response.statusCode == 200) {
       return jsonDecode(response.body) as List<dynamic>;
     }

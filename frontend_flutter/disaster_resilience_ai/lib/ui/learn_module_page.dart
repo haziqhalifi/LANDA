@@ -332,21 +332,31 @@ class _LearnModulePageState extends State<LearnModulePage>
   bool _typing = false;
 
   @override
+  bool _welcomeAdded = false;
+
   void initState() {
     super.initState();
     _mod = _content[widget.hazardType] ?? _content['flood']!;
     _tabCtrl = TabController(length: 4, vsync: this);
-    // Welcome message in chatbot tab
-    _msgs.add(
-      _ChatMsg(
-        text: _tr(
-          en: '👋 Hi! I\'m your **${_heroTitleLocalized()}** assistant. Ask me anything about ${_hazardLabel()} safety, preparedness or response.',
-          ms: '👋 Hai! Saya pembantu **${_heroTitleLocalized()}** anda. Tanya saya apa sahaja tentang keselamatan, kesiapsiagaan atau respons ${_hazardLabel()}.',
-          zh: '👋 你好！我是你的 **${_heroTitleLocalized()}** 助手。你可以询问任何关于${_hazardLabel()}安全、准备或应对的问题。',
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_welcomeAdded) {
+      _welcomeAdded = true;
+      // Welcome message in chatbot tab — needs context (AppLanguageScope), so placed here
+      _msgs.add(
+        _ChatMsg(
+          text: _tr(
+            en: '👋 Hi! I\'m your **${_heroTitleLocalized()}** assistant. Ask me anything about ${_hazardLabel()} safety, preparedness or response.',
+            ms: '👋 Hai! Saya pembantu **${_heroTitleLocalized()}** anda. Tanya saya apa sahaja tentang keselamatan, kesiapsiagaan atau respons ${_hazardLabel()}.',
+            zh: '👋 你好！我是你的 **${_heroTitleLocalized()}** 助手。你可以询问任何关于${_hazardLabel()}安全、准备或应对的问题。',
+          ),
+          sender: _Sender.bot,
         ),
-        sender: _Sender.bot,
-      ),
-    );
+      );
+    }
   }
 
   String _tr({required String en, required String ms, String? zh}) {

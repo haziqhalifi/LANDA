@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Resilience AI — Admin</title>
+  <link rel="icon" href="logo.png" type="image/png" />
+  <!-- Apply dark class before page renders to avoid flash -->
+  <script>
+    if (localStorage.getItem('adminDark') === '1' ||
+        (!localStorage.getItem('adminDark') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* ── CSS Variables — light & dark theme ─────────────────────────────── */
+    :root {
+      --bg:            #f1f5f9;
+      --card:          #ffffff;
+      --card-border:   #e2e8f0;
+      --nav:           #166534;
+      --nav-border:    #14532d;
+      --text:          #111827;
+      --text2:         #374151;
+      --muted:         #6b7280;
+      --input-bg:      #ffffff;
+      --input-border:  #d1d5db;
+      --th-bg:         #f8fafc;
+      --th-text:       #475569;
+      --modal:         #ffffff;
+      --modal-border:  #e2e8f0;
+      --overlay:       rgba(255,255,255,0.65);
+    }
+    .dark {
+      --bg:            #0F140F;
+      --card:          #1B251B;
+      --card-border:   #243324;
+      --nav:           #1B251B;
+      --nav-border:    #243324;
+      --text:          #f1f5f9;
+      --text2:         #e2e8f0;
+      --muted:         #9ca3af;
+      --input-bg:      #1E2720;
+      --input-border:  #2d3d2d;
+      --th-bg:         #111b11;
+      --th-text:       #6b7280;
+      --modal:         #1B251B;
+      --modal-border:  #243324;
+      --overlay:       rgba(27,37,27,0.72);
+    }
+
+    /* ── Base ─────────────────────────────────────────────────────────────── */
+    * { box-sizing: border-box; transition: background-color .15s, border-color .15s, color .15s; }
+    body { background: var(--bg); min-height: 100vh; margin: 0; font-family: ui-sans-serif,system-ui,sans-serif; }
+
+    /* ── Nav ──────────────────────────────────────────────────────────────── */
+    .c-nav { background: var(--nav); border-bottom: 1px solid var(--nav-border); }
+
+    /* ── Cards ────────────────────────────────────────────────────────────── */
+    .c-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; }
+
+    /* ── Stat cards ───────────────────────────────────────────────────────── */
+    .stat-total    { background: var(--card);   border: 1px solid var(--card-border); }
+    .stat-pending  { background: #fefce8; border: 1px solid #fef08a; }
+    .dark .stat-pending  { background: #1c1a0a; border-color: #422006; }
+    .stat-validated{ background: #f0fdf4; border: 1px solid #bbf7d0; }
+    .dark .stat-validated{ background: #0c1a0e; border-color: #14532d; }
+    .stat-rejected { background: #fef2f2; border: 1px solid #fecaca; }
+    .dark .stat-rejected { background: #1a0c0c; border-color: #450a0a; }
+    .stat-resolved { background: #f8fafc; border: 1px solid var(--card-border); }
+    .dark .stat-resolved { background: #111b11; border-color: #1e2a1e; }
+
+    .stat-num-default  { color: var(--text); }
+    .stat-num-pending  { color: #d97706; }
+    .dark .stat-num-pending  { color: #fbbf24; }
+    .stat-num-validated{ color: #16a34a; }
+    .dark .stat-num-validated{ color: #4ade80; }
+    .stat-num-rejected { color: #dc2626; }
+    .dark .stat-num-rejected { color: #f87171; }
+    .stat-num-resolved { color: #6b7280; }
+    .dark .stat-num-resolved { color: #9ca3af; }
+
+    .stat-lbl-default  { color: var(--muted); }
+    .stat-lbl-pending  { color: #92400e; } .dark .stat-lbl-pending  { color: #d97706; }
+    .stat-lbl-validated{ color: #166534; } .dark .stat-lbl-validated{ color: #22c55e; }
+    .stat-lbl-rejected { color: #991b1b; } .dark .stat-lbl-rejected { color: #ef4444; }
+    .stat-lbl-resolved { color: #6b7280; } .dark .stat-lbl-resolved { color: #9ca3af; }
+
+    /* ── Inputs & selects ─────────────────────────────────────────────────── */
+    .c-input {
+      background: var(--input-bg); border: 1px solid var(--input-border);
+      color: var(--text); border-radius: 8px; font-size: .875rem; padding: 8px 12px;
+    }
+    .c-input:focus { outline: none; border-color: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,.2); }
+    .c-input::placeholder { color: var(--muted); }
+
+    /* ── Table ────────────────────────────────────────────────────────────── */
+    .c-th { background: var(--th-bg); color: var(--th-text); font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+    .rpt-row { background: var(--card); border-bottom: 1px solid var(--card-border); transition: background .1s; }
+    .rpt-row:hover { filter: brightness(0.97); }
+    .dark .rpt-row:hover { filter: brightness(1.06); }
+    .rpt-cell  { color: var(--text2);  font-size: .875rem; }
+    .rpt-muted { color: var(--muted);  font-size: .875rem; }
+    .rpt-xs    { color: var(--muted);  font-size: .7rem; display: block; margin-top: 2px; }
+
+    /* ── Type badges ──────────────────────────────────────────────────────── */
+    .tbadge { display:inline-flex;align-items:center;padding:2px 9px;border-radius:9999px;font-size:.7rem;font-weight:700; }
+    .tbadge-flood             { background:#dbeafe;color:#1e40af; }
+    .dark .tbadge-flood       { background:#1e3a5f;color:#93c5fd; }
+    .tbadge-landslide         { background:#fef3c7;color:#92400e; }
+    .dark .tbadge-landslide   { background:#451a03;color:#fcd34d; }
+    .tbadge-blocked_road      { background:#ffedd5;color:#9a3412; }
+    .dark .tbadge-blocked_road{ background:#431407;color:#fdba74; }
+    .tbadge-medical_emergency { background:#fee2e2;color:#991b1b; }
+    .dark .tbadge-medical_emergency { background:#450a0a;color:#fca5a5; }
+
+    /* ── Status badges ────────────────────────────────────────────────────── */
+    .sbadge { display:inline-flex;align-items:center;padding:2px 9px;border-radius:9999px;font-size:.7rem;font-weight:700;text-transform:capitalize; }
+    .sbadge-pending   { background:#fef9c3;color:#854d0e; } .dark .sbadge-pending   { background:#422006;color:#fde047; }
+    .sbadge-validated { background:#dcfce7;color:#166534; } .dark .sbadge-validated { background:#14532d;color:#86efac; }
+    .sbadge-rejected  { background:#fee2e2;color:#991b1b; } .dark .sbadge-rejected  { background:#450a0a;color:#fca5a5; }
+    .sbadge-resolved  { background:#f3f4f6;color:#374151; } .dark .sbadge-resolved  { background:#1f2937;color:#9ca3af; }
+    .sbadge-expired   { background:#f3f4f6;color:#374151; } .dark .sbadge-expired   { background:#1f2937;color:#9ca3af; }
+
+    /* ── Action buttons ───────────────────────────────────────────────────── */
+    .btn-a { padding:3px 10px;border-radius:6px;font-size:.7rem;font-weight:600;cursor:pointer;border:none;transition:filter .1s;white-space:nowrap; }
+    .btn-a:hover { filter: brightness(.92); }
+    .dark .btn-a:hover { filter: brightness(1.15); }
+    .btn-approve  { background:#dcfce7;color:#166534; } .dark .btn-approve  { background:#14532d;color:#86efac; }
+    .btn-reject   { background:#fee2e2;color:#991b1b; } .dark .btn-reject   { background:#450a0a;color:#fca5a5; }
+    .btn-resolve  { background:#dbeafe;color:#1e40af; } .dark .btn-resolve  { background:#1e3a5f;color:#93c5fd; }
+    .btn-del      { background:#f1f5f9;color:#374151; } .dark .btn-del      { background:#1f2937;color:#9ca3af; }
+    .btn-ai       { background:#f3e8ff;color:#7e22ce;padding:4px 10px;border-radius:6px;font-size:.7rem;font-weight:600;cursor:pointer;border:none; }
+    .dark .btn-ai { background:#3b0764;color:#d8b4fe; }
+
+    /* ── AI score badge ───────────────────────────────────────────────────── */
+    .score-badge { display:inline-flex;align-items:center;padding:2px 9px;border-radius:9999px;font-size:.7rem;font-weight:700;cursor:pointer;border:none; }
+    .score-badge:hover { filter: brightness(.9); }
+    .score-hi { background:#dcfce7;color:#166534; } .dark .score-hi { background:#14532d;color:#86efac; }
+    .score-md { background:#fef9c3;color:#854d0e; } .dark .score-md { background:#422006;color:#fde047; }
+    .score-lo { background:#fee2e2;color:#991b1b; } .dark .score-lo { background:#450a0a;color:#fca5a5; }
+
+/* ── Pagination ───────────────────────────────────────────────────────── */
+    .c-page-btn {
+      padding: 6px 12px; font-size: .875rem; border-radius: 8px; cursor: pointer;
+      background: var(--input-bg); border: 1px solid var(--input-border);
+      color: var(--text2); transition: filter .1s;
+    }
+    .c-page-btn:hover:not(:disabled) { filter: brightness(.95); }
+    .dark .c-page-btn:hover:not(:disabled) { filter: brightness(1.1); }
+    .c-page-btn:disabled { opacity: .4; cursor: default; }
+
+    /* ── Modal ────────────────────────────────────────────────────────────── */
+    .c-modal { background: var(--modal); border: 1px solid var(--modal-border); border-radius: 16px; }
+    .c-modal-overlay { position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px; }
+    .c-modal-btn-cancel {
+      background: var(--input-bg); border: 1px solid var(--input-border);
+      color: var(--text2); border-radius: 10px; padding: 10px 0;
+      font-weight: 700; font-size: .875rem; cursor: pointer; flex: 1;
+    }
+    .c-modal-btn-cancel:hover { filter: brightness(.95); }
+    .dark .c-modal-btn-cancel:hover { filter: brightness(1.1); }
+
+    /* ── Print ────────────────────────────────────────────────────────────── */
+    @media print {
+      body > *:not(#print-section) { display:none!important; }
+      #print-section { display:block!important; padding:32px; font-family:sans-serif; }
+      #print-section * { color:#111!important; background:white!important; }
+      #print-section h1 { color:#166534!important; border-bottom:2px solid #166534; padding-bottom:8px; margin-bottom:20px; }
+      #print-section .pr-score { font-size:2.5rem; font-weight:800; }
+      #print-section .pr-title { font-weight:700; margin:16px 0 4px; font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; }
+      #print-section .pr-bar   { height:10px; border-radius:9999px; margin:4px 0 12px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Nav ── -->
+  <nav class="c-nav sticky top-0 z-30 px-6 py-3.5 flex items-center justify-between" style="box-shadow:0 1px 3px rgba(0,0,0,.15)">
+    <div class="flex items-center gap-3">
+      <img src="logo.png" alt="App Logo" style="width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0" />
+      <div>
+        <p style="font-weight:700;color:#fff;font-size:.95rem;line-height:1.1">Resilience AI</p>
+        <p style="color:#86efac;font-size:.7rem;margin-top:1px">Admin Dashboard</p>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <!-- Dark mode toggle -->
+      <button id="dark-toggle" onclick="toggleDark()" title="Toggle dark mode"
+        style="width:34px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:none;cursor:pointer;background:rgba(255,255,255,.15);transition:background .15s"
+        onmouseover="this.style.background='rgba(255,255,255,.25)'" onmouseout="this.style.background='rgba(255,255,255,.15)'">
+        <svg id="icon-sun" class="hidden" width="18" height="18" fill="none" stroke="#fde68a" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l.707.707M6.343 6.343l.707.707M12 8a4 4 0 100 8 4 4 0 000-8z"/>
+        </svg>
+        <svg id="icon-moon" width="18" height="18" fill="none" stroke="#bbf7d0" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+      </button>
+      <button id="logout-btn" style="font-size:.875rem;color:#bbf7d0;background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:6px;transition:color .15s"
+        onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#bbf7d0'">Sign Out</button>
+    </div>
+  </nav>
+
+  <div class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- ── Stats ── -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      <div class="stat-total rounded-xl p-4 text-center" style="box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <p class="text-2xl font-bold stat-num-default" id="stat-total">—</p>
+        <p class="text-xs stat-lbl-default mt-1">Total</p>
+      </div>
+      <div class="stat-pending rounded-xl p-4 text-center" style="box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <p class="text-2xl font-bold stat-num-pending" id="stat-pending">—</p>
+        <p class="text-xs stat-lbl-pending mt-1">Pending</p>
+      </div>
+      <div class="stat-validated rounded-xl p-4 text-center" style="box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <p class="text-2xl font-bold stat-num-validated" id="stat-validated">—</p>
+        <p class="text-xs stat-lbl-validated mt-1">Validated</p>
+      </div>
+      <div class="stat-rejected rounded-xl p-4 text-center" style="box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <p class="text-2xl font-bold stat-num-rejected" id="stat-rejected">—</p>
+        <p class="text-xs stat-lbl-rejected mt-1">Rejected</p>
+      </div>
+      <div class="stat-resolved rounded-xl p-4 text-center" style="box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <p class="text-2xl font-bold stat-num-resolved" id="stat-resolved">—</p>
+        <p class="text-xs stat-lbl-resolved mt-1">Resolved</p>
+      </div>
+    </div>
+
+    <!-- ── Filters ── -->
+    <div class="c-card p-4 mb-4" style="box-shadow:0 1px 3px rgba(0,0,0,.06)">
+      <div class="flex flex-wrap gap-3 items-center">
+        <input type="text" id="search-input" placeholder="Search by description or location..."
+          class="c-input flex-1" style="min-width:200px" />
+        <select id="status-filter" class="c-input">
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="validated">Validated</option>
+          <option value="rejected">Rejected</option>
+          <option value="resolved">Resolved</option>
+          <option value="expired">Expired</option>
+        </select>
+        <select id="type-filter" class="c-input">
+          <option value="">All Types</option>
+          <option value="flood">Flood</option>
+          <option value="landslide">Landslide</option>
+          <option value="blocked_road">Blocked Road</option>
+          <option value="medical_emergency">Medical Emergency</option>
+        </select>
+        <button id="refresh-btn"
+          style="padding:8px 16px;background:#166534;color:#fff;border:none;border-radius:8px;font-size:.875rem;font-weight:600;cursor:pointer;transition:filter .15s"
+          onmouseover="this.style.filter='brightness(.9)'" onmouseout="this.style.filter=''">
+          ↻ Refresh
+        </button>
+      </div>
+    </div>
+
+<!-- ── Active Warnings Panel ── -->
+    <div class="c-card" style="margin-bottom:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--card-border)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:1.1rem">⚠️</span>
+          <h2 style="font-size:1rem;font-weight:700;color:var(--text-primary)">Active Alerts <span style="font-size:.75rem;font-weight:400;color:var(--text-muted)">(validated — visible to app users)</span></h2>
+          <span id="warnings-count" style="background:#fef3c7;color:#92400e;border-radius:9999px;padding:2px 8px;font-size:.75rem;font-weight:700"></span>
+        </div>
+        <button onclick="loadWarnings()" style="padding:6px 12px;background:transparent;border:1px solid var(--card-border);border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;color:var(--text-sub)">↻ Refresh</button>
+      </div>
+      <div id="warnings-list" style="padding:12px 16px;min-height:48px;font-size:.875rem;color:var(--text-sub)">Loading…</div>
+    </div>
+
+<!-- ── Reports Table ── -->
+    <div class="c-card overflow-hidden relative" style="box-shadow:0 1px 3px rgba(0,0,0,.06)">
+
+      <!-- Loading overlay -->
+      <div id="table-loading" class="hidden" style="position:absolute;inset:0;background:var(--overlay);backdrop-filter:blur(1px);display:flex;align-items:center;justify-content:center;z-index:10;border-radius:12px">
+        <div style="display:flex;align-items:center;gap:8px;background:var(--card);padding:8px 16px;border-radius:9999px;border:1px solid var(--card-border);box-shadow:0 2px 8px rgba(0,0,0,.12)">
+          <svg style="animation:spin 1s linear infinite;width:16px;height:16px" fill="none" viewBox="0 0 24 24">
+            <circle opacity=".25" cx="12" cy="12" r="10" stroke="#166534" stroke-width="4"/>
+            <path fill="#166534" opacity=".75" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          <span style="font-size:.875rem;font-weight:600;color:var(--text2)">Refreshing…</span>
+        </div>
+      </div>
+      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:.875rem">
+          <thead>
+            <tr>
+              <th class="c-th" style="text-align:left;padding:12px 16px">Type</th>
+              <th class="c-th" style="text-align:left;padding:12px 16px">Location</th>
+              <th class="c-th" style="text-align:left;padding:12px 16px">Description</th>
+              <th class="c-th" style="text-align:left;padding:12px 16px">Status</th>
+              <th class="c-th" style="text-align:left;padding:12px 16px">Vouches</th>
+              <th class="c-th" style="text-align:left;padding:12px 16px">Media</th>
+              <th class="c-th" style="text-align:left;padding:12px 16px">AI Score</th>
+              <th class="c-th" style="text-align:left;padding:12px 16px">Submitted</th>
+              <th class="c-th" style="text-align:left;padding:12px 16px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="reports-tbody">
+            <tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted)">Loading reports...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--card-border)">
+        <span id="page-info" style="font-size:.875rem;color:var(--muted)"></span>
+        <div style="display:flex;gap:8px">
+          <button id="prev-btn" class="c-page-btn" disabled>← Prev</button>
+          <button id="next-btn" class="c-page-btn" disabled>Next →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Toast ── -->
+  <div id="toast" class="hidden" style="position:fixed;top:16px;right:16px;z-index:100;padding:12px 20px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.2);font-size:.875rem;font-weight:600"></div>
+
+  <!-- ── Confirm Modal ── -->
+  <div id="confirm-modal" class="c-modal-overlay" style="display:none">
+    <div class="c-modal p-6 w-full" style="max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <p id="confirm-message" style="color:var(--text);font-weight:500;margin-bottom:20px;font-size:.875rem;line-height:1.6"></p>
+      <div style="display:flex;gap:12px">
+        <button id="confirm-ok-btn" style="flex:1;background:#166534;color:#fff;border:none;border-radius:10px;padding:10px 0;font-weight:700;font-size:.875rem;cursor:pointer;transition:filter .15s" onmouseover="this.style.filter='brightness(.9)'" onmouseout="this.style.filter=''">Confirm</button>
+        <button id="confirm-cancel-btn" class="c-modal-btn-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SMS Modal ── -->
+  <div id="sms-modal" class="c-modal-overlay" style="display:none">
+    <div class="c-modal p-6 w-full" style="max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
+        <div style="width:40px;height:40px;background:#fff7ed;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.2rem">📱</div>
+        <div>
+          <h3 style="font-weight:700;color:var(--text);font-size:.95rem">Send SMS Alert to Nearby People?</h3>
+          <p style="font-size:.75rem;color:var(--muted);margin-top:4px">People within 10 km will receive a flood warning via SMS.</p>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:8px;padding:6px 10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px">
+            <span style="font-size:.85rem">🧪</span>
+            <span style="font-size:.72rem;color:#9a3412;font-weight:600">Demo mode: SMS → 0175815030 only</span>
+          </div>
+        </div>
+      </div>
+      <input type="hidden" id="sms-report-id" />
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button id="sms-send-btn" style="flex:1;background:#ea580c;color:#fff;border:none;border-radius:10px;padding:10px 0;font-weight:700;font-size:.875rem;cursor:pointer;transition:filter .15s" onmouseover="this.style.filter='brightness(.9)'" onmouseout="this.style.filter=''">Alert via SMS</button>
+        <button id="sms-cancel-btn" class="c-modal-btn-cancel">Skip</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Reject Modal ── -->
+  <div id="reject-modal" class="c-modal-overlay" style="display:none">
+    <div class="c-modal p-6 w-full" style="max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,.2)">
+      <h3 style="font-weight:700;color:var(--text);font-size:1.05rem;margin-bottom:16px">Reject Report</h3>
+      <input type="hidden" id="reject-report-id" />
+      <label style="display:block;font-size:.875rem;font-weight:600;color:var(--text2);margin-bottom:6px">Reason for rejection</label>
+      <textarea id="reject-reason" rows="3" class="c-input" style="width:100%;resize:vertical"
+        placeholder="e.g. Duplicate report, insufficient evidence..."></textarea>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button id="reject-confirm-btn" style="flex:1;background:#dc2626;color:#fff;border:none;border-radius:10px;padding:10px 0;font-weight:700;font-size:.875rem;cursor:pointer;transition:filter .15s" onmouseover="this.style.filter='brightness(.9)'" onmouseout="this.style.filter=''">Reject</button>
+        <button id="reject-cancel-btn" class="c-modal-btn-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Media Viewer Modal ── -->
+  <div id="media-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);align-items:center;justify-content:center;z-index:100;padding:16px" onclick="if(event.target===this)closeMediaModal()">
+    <div style="position:relative;max-width:900px;max-height:90vh;width:100%;display:flex;flex-direction:column;align-items:center;gap:12px">
+      <button onclick="closeMediaModal()" style="position:absolute;top:-36px;right:0;color:rgba(255,255,255,.6);background:none;border:none;font-size:1.8rem;cursor:pointer;line-height:1" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='rgba(255,255,255,.6)'">✕</button>
+      <img id="media-img" src="" alt="Report media" style="max-height:78vh;max-width:100%;border-radius:16px;object-fit:contain;box-shadow:0 8px 32px rgba(0,0,0,.4)" />
+      <a id="media-link" href="" target="_blank" rel="noopener" style="padding:6px 16px;background:rgba(255,255,255,.12);color:#fff;font-size:.8rem;border-radius:8px;border:1px solid rgba(255,255,255,.2);text-decoration:none;transition:background .15s" onmouseover="this.style.background='rgba(255,255,255,.22)'" onmouseout="this.style.background='rgba(255,255,255,.12)'">↗ Open full size in new tab</a>
+    </div>
+  </div>
+
+  <!-- ── AI Report Modal ── -->
+  <div id="ai-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;justify-content:center;z-index:100;padding:16px" onclick="if(event.target===this)closeAiModal()">
+    <div class="c-modal w-full" style="max-width:640px;max-height:90vh;overflow:auto;box-shadow:0 8px 40px rgba(0,0,0,.25)">
+      <div id="ai-modal-content" style="padding:24px"></div>
+      <div style="display:flex;gap:10px;padding:0 24px 24px">
+        <button onclick="printAiReport()" style="flex:1;background:#166534;color:#fff;border:none;border-radius:12px;padding:11px 0;font-weight:700;font-size:.875rem;cursor:pointer;transition:filter .15s" onmouseover="this.style.filter='brightness(.9)'" onmouseout="this.style.filter=''">🖨 Print / Save as PDF</button>
+        <button onclick="closeAiModal()" class="c-modal-btn-cancel">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SMS Replies modal -->
+  <div id="sms-replies-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;justify-content:center;z-index:100;padding:16px" onclick="if(event.target===this)document.getElementById('sms-replies-modal').style.display='none'">
+    <div class="c-modal w-full" style="max-width:560px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.25)">
+      <div style="padding:20px 24px 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div>
+          <h3 id="sms-replies-title" class="text-gray-800 dark:text-gray-100" style="font-weight:700;font-size:1rem"></h3>
+          <p id="sms-replies-summary" class="text-gray-500 dark:text-gray-400" style="font-size:.78rem;margin-top:4px"></p>
+        </div>
+        <button id="sms-replies-close" style="background:transparent;border:none;font-size:1.2rem;cursor:pointer;color:#9ca3af;line-height:1">✕</button>
+      </div>
+      <div id="sms-replies-list" style="flex:1;overflow-y:auto;padding:0 24px 8px;margin-top:12px"></div>
+      <div style="padding:16px 24px;flex-shrink:0;border-top:1px solid rgba(128,128,128,.15)">
+        <button onclick="document.getElementById('sms-replies-modal').style.display='none'" class="c-modal-btn-cancel" style="width:100%">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Print section -->
+  <div id="print-section" style="display:none"></div>
+
+  <script src="js/api.js?v=12"></script>
+  <script src="js/auth.js?v=12"></script>
+  <script src="js/reports.js?v=12"></script>
+  <script>
+    requireAuth();
+    document.getElementById('logout-btn').addEventListener('click', logout);
+    loadWarnings();
+
+    async function loadWarnings() {
+      const token = getToken();
+      const el = document.getElementById('warnings-list');
+      const cnt = document.getElementById('warnings-count');
+      try {
+        // Show only VALIDATED community reports — these are what create the
+        // "Flood confirmed" banner + I'm SAFE / I Need Help buttons in the app.
+        const data = await api.getReports(token, { status: 'validated', limit: 50 });
+        const rows = data?.reports || [];
+        if (rows.length === 0) {
+          el.innerHTML = '<p style="color:var(--text-muted);padding:4px 0">No active alerts. App users will not see any warning banners.</p>';
+          cnt.textContent = '0';
+          return;
+        }
+        cnt.textContent = rows.length;
+        const TYPE_COLOR = { flood: '#92400e', landslide: '#7c3aed', blocked_road: '#1e40af', medical_emergency: '#dc2626' };
+        const TYPE_BG    = { flood: '#fef3c7', landslide: '#ede9fe', blocked_road: '#dbeafe', medical_emergency: '#fee2e2' };
+        const TYPE_ICON  = { flood: '🌊', landslide: '⛰️', blocked_road: '🚧', medical_emergency: '🚑' };
+        el.innerHTML = rows.map(r => {
+          const t   = r.report_type || 'unknown';
+          const bg  = TYPE_BG[t]    || '#f3f4f6';
+          const col = TYPE_COLOR[t] || '#374151';
+          const ico = TYPE_ICON[t]  || '⚠️';
+          const ago = r.created_at ? new Date(r.created_at).toLocaleDateString('en-MY') : '';
+          return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--card-border)">
+            <span style="background:${bg};color:${col};border-radius:6px;padding:3px 10px;font-size:.75rem;font-weight:700;text-transform:capitalize;white-space:nowrap">${ico} ${t.replace('_',' ')}</span>
+            <div style="flex:1;min-width:0">
+              <p style="font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.location_name || '(unknown location)'}</p>
+              <p style="font-size:.75rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.description || ''} · ${ago}</p>
+            </div>
+            <button onclick="dismissActiveWarning('${r.id}',this)"
+              style="flex-shrink:0;padding:5px 12px;background:#dc2626;color:#fff;border:none;border-radius:7px;font-size:.78rem;font-weight:600;cursor:pointer">
+              Resolve
+            </button>
+          </div>`;
+        }).join('');
+      } catch (e) {
+        el.innerHTML = `<p style="color:#dc2626">${e.message}</p>`;
+      }
+    }
+
+    async function dismissActiveWarning(id, btn) {
+      const token = getToken();
+      btn.disabled = true;
+      btn.textContent = '…';
+      try {
+        await api.resolveReport(token, id);
+        await loadWarnings();
+        // Also refresh main reports table so status updates there too
+        loadReports();
+        showToast('Report resolved — warning cleared from app within 60s', 'success');
+      } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Resolve';
+        showToast(e.message, 'error');
+      }
+    }
+function toggleDark() {
+      const isDark = document.documentElement.classList.toggle('dark');
+      localStorage.setItem('adminDark', isDark ? '1' : '0');
+      syncDarkIcon();
+    }
+    function syncDarkIcon() {
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('icon-sun').classList.toggle('hidden', !isDark);
+      document.getElementById('icon-moon').classList.toggle('hidden', isDark);
+    }
+    syncDarkIcon();
+
+    // Fix: table-loading needs flex when shown
+    const _origRemove = document.getElementById('table-loading').classList.remove.bind(document.getElementById('table-loading').classList);
+    document.getElementById('table-loading').classList.remove = function(cls) {
+      if (cls === 'hidden') this.style.display = 'flex';
+      _origRemove(cls);
+    };
+    document.getElementById('table-loading').classList.add = function(cls) {
+      HTMLElement.prototype.classList.add.call(document.getElementById('table-loading'), cls);
+      if (cls === 'hidden') document.getElementById('table-loading').style.display = 'none';
+    };
+  </script>
+</body>
+</html>

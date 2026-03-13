@@ -13,6 +13,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.config import ADMIN_JWT_SECRET
 from app.db import admin as admin_db
 from app.db import reports as report_db
+from app.db import warnings as warning_db
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -78,6 +79,47 @@ async def admin_me(sub: str = Depends(_verify_token)) -> dict:
 
 # ── Report management ─────────────────────────────────────────────────────────
 
+# In-memory cache: report_id → full Claude analysis result
+# Persists while the server is running; lost on restart (acceptable — admin can re-run)
+_ai_cache: dict[str, dict] = {}
+
+
+def _enrich_ai_fields(row: dict) -> dict:
+    """Attach ai_status + ai_analysis for the admin UI.
+
+    Rules:
+    - If a Claude analysis is cached for this report → show score badge (ai_status='done')
+    - If report is still 'pending' → always show AI Check button (ai_status=None)
+      so the admin can trigger a real content analysis
+    - Otherwise (validated/rejected/resolved with confidence_score) → show ML score badge
+    """
+    report_id = row.get("id", "")
+
+    # Claude result takes priority
+    if report_id in _ai_cache:
+        row["ai_status"] = "done"
+        row["ai_analysis"] = _ai_cache[report_id]
+        return row
+
+    # Pending reports always show the AI Check button — never show ML auto-score
+    if row.get("status") == "pending":
+        row["ai_status"] = None
+        row["ai_analysis"] = None
+        return row
+
+    # Non-pending: convert ML confidence_score to a badge if available
+    score_raw = row.get("confidence_score")
+    if score_raw is None:
+        row.setdefault("ai_status", None)
+        row.setdefault("ai_analysis", None)
+        return row
+    score = round(score_raw * 100)
+    rec = ("Credible" if score >= 70 else "Moderate" if score >= 40 else "Low Credibility")
+    row["ai_status"] = "done"
+    row["ai_analysis"] = {"score": score, "recommendation": rec, "reasoning": "", "sources": []}
+    return row
+
+
 @router.get("/reports")
 async def list_reports(
     report_status: str  = Query(default=None),
@@ -95,6 +137,7 @@ async def list_reports(
         limit=limit,
         offset=offset,
     )
+    rows = [_enrich_ai_fields(r) for r in rows]
     return {"reports": rows, "total": len(rows)}
 
 
@@ -106,13 +149,54 @@ async def get_report(report_id: str, sub: str = Depends(_verify_token)) -> dict:
     return row
 
 
+_REPORT_TYPE_TO_HAZARD = {
+    "flood":             "flood",
+    "landslide":         "landslide",
+    "blocked_road":      "infrastructure",
+    "medical_emergency": "aid",
+}
+
+_REPORT_TYPE_TO_LEVEL = {
+    "flood":             "warning",
+    "landslide":         "warning",
+    "blocked_road":      "observe",
+    "medical_emergency": "warning",
+}
+
+
 @router.post("/reports/{report_id}/approve")
 async def approve_report(report_id: str, sub: str = Depends(_verify_token)) -> dict:
     row = report_db.get_report(report_id)
     if not row:
         raise HTTPException(status_code=404, detail="Report not found")
     updated = report_db.validate_report(report_id, validated_by="admin")
-    return {"message": "Report approved", "report": updated}
+
+    # Auto-create a Warning so the mobile app alert system picks it up
+    warning_record = None
+    try:
+        report_type = (row.get("report_type") or "flood").lower()
+        hazard_type = _REPORT_TYPE_TO_HAZARD.get(report_type, "flood")
+        alert_level = _REPORT_TYPE_TO_LEVEL.get(report_type, "warning")
+        location = row.get("location_name") or "Unknown location"
+        warning_record = warning_db.create_warning(
+            title=f"{hazard_type.capitalize()} Alert — {location}",
+            description=row.get("description") or "Community report validated by admin.",
+            hazard_type=hazard_type,
+            alert_level=alert_level,
+            latitude=float(row["latitude"]),
+            longitude=float(row["longitude"]),
+            radius_km=5.0,
+            source="Admin (Community Report)",
+        )
+        logger.info("Admin %s approved report %s → created warning %s", sub, report_id, warning_record["id"])
+    except Exception as exc:
+        logger.warning("Could not auto-create warning for report %s: %s", report_id, exc)
+
+    return {
+        "message": "Report approved",
+        "report": updated,
+        "warning_id": warning_record["id"] if warning_record else None,
+    }
 
 
 @router.post("/reports/{report_id}/reject")
@@ -141,7 +225,12 @@ async def delete_report(report_id: str, sub: str = Depends(_verify_token)) -> No
     row = report_db.get_report(report_id)
     if not row:
         raise HTTPException(status_code=404, detail="Report not found")
-    report_db.delete_report(report_id)
+    deleted = report_db.delete_report(report_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=500,
+            detail="Delete failed — Supabase returned no rows. Check that SUPABASE_KEY is the service-role key (not the anon key).",
+        )
 
 
 @router.get("/stats")
@@ -150,6 +239,50 @@ async def get_stats(sub: str = Depends(_verify_token)) -> dict:
 
 
 # ── SMS alert dispatch ─────────────────────────────────────────────────────────
+
+@router.get("/reports/{report_id}/sms-replies")
+async def sms_reply_stats(report_id: str, sub: str = Depends(_verify_token)) -> dict:
+    """Return per-report SMS reply stats: safe / danger / no-reply counts and per-row detail."""
+    from app.db.supabase_client import get_client
+    sb = get_client()
+    rows = (
+        sb.table("sms_alerts")
+        .select("*")
+        .eq("event_id", report_id)
+        .order("sent_at", desc=True)
+        .execute().data or []
+    )
+
+    def _mask(phone: str) -> str:
+        p = phone or ""
+        if len(p) < 6:
+            return "****"
+        return p[:3] + "****" + p[-3:]
+
+    safe_count     = sum(1 for r in rows if r.get("reply_status") == "safe")
+    danger_count   = sum(1 for r in rows if r.get("reply_status") == "needs_help")
+    no_reply_count = sum(1 for r in rows if not r.get("reply_status"))
+
+    return {
+        "report_id":      report_id,
+        "total_sent":     len(rows),
+        "safe_count":     safe_count,
+        "danger_count":   danger_count,
+        "no_reply_count": no_reply_count,
+        "replies": [
+            {
+                "id":                   r["id"],
+                "phone_masked":         _mask(r.get("phone_number", "")),
+                "reply_status":         r.get("reply_status") or "no_reply",
+                "alert_type":           r.get("alert_type", ""),
+                "sent_at":              r.get("sent_at"),
+                "reply_at":             r.get("reply_at"),
+                "rescue_acknowledged":  r.get("rescue_acknowledged", False),
+            }
+            for r in rows
+        ],
+    }
+
 
 @router.post("/reports/{report_id}/send-sms")
 async def send_sms_alert(report_id: str, sub: str = Depends(_verify_token)) -> dict:
@@ -200,3 +333,79 @@ async def acknowledge_rescue(alert_id: str, sub: str = Depends(_verify_token)) -
     sb.table("sms_alerts").update({"rescue_acknowledged": True}).eq("id", alert_id).execute()
     logger.info("Admin %s acknowledged rescue request %s", sub, alert_id)
     return {"message": "Rescue request acknowledged"}
+
+
+# ── SMS preview ────────────────────────────────────────────────────────────────
+
+@router.get("/reports/{report_id}/sms-preview")
+async def sms_preview(report_id: str, sub: str = Depends(_verify_token)) -> dict:
+    """Return how many SMS-capable users are within 10 km of the report."""
+    row = report_db.get_report(report_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Report not found")
+    lat, lon = row.get("latitude"), row.get("longitude")
+    if lat is None or lon is None:
+        return {"phone_users": 0, "location_name": row.get("location_name", "unknown")}
+    from app.core.geo import haversine
+    from app.db.devices import get_all_devices_with_location
+    phone_count = sum(
+        1 for d in get_all_devices_with_location()
+        if d.get("phone_number")
+        and d.get("latitude") is not None
+        and haversine(d["latitude"], d["longitude"], lat, lon) <= 10.0
+    )
+    return {"phone_users": phone_count, "location_name": row.get("location_name", "unknown")}
+
+
+# ── AI analysis (on-demand, Claude-powered) ────────────────────────────────────
+
+@router.post("/reports/{report_id}/ai-analyze")
+async def ai_analyze_report(report_id: str, sub: str = Depends(_verify_token)) -> dict:
+    """Run multi-agent Claude analysis (news + weather + gov alerts) to assess report credibility."""
+    row = report_db.get_report(report_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    from app.core.config import ANTHROPIC_API_KEY
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="AI analysis unavailable — ANTHROPIC_API_KEY not configured")
+
+    try:
+        import asyncio
+        from app.services.ai_analysis import analyze_report
+        loop = asyncio.get_event_loop()
+        analysis = await loop.run_in_executor(None, analyze_report, dict(row))
+
+        # Clamp score
+        analysis["score"] = max(0, min(100, int(analysis.get("score", 50))))
+
+        # Cache and persist score
+        _ai_cache[report_id] = analysis
+        report_db.update_confidence_score(report_id, analysis["score"] / 100)
+
+        logger.info("Admin %s: AI analysis for report %s → score=%s sources=%s",
+                    sub, report_id, analysis["score"], analysis.get("sources"))
+        return {"analysis": analysis}
+
+    except Exception as exc:
+        logger.error("AI analysis failed for report %s: %s", report_id, exc)
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {exc}")
+
+
+# ── Warnings management ────────────────────────────────────────────────────────
+
+@router.get("/warnings")
+async def list_active_warnings(sub: str = Depends(_verify_token)) -> list[dict]:
+    """Return all active DB warnings (excludes MetMalaysia gov alerts)."""
+    rows = warning_db.list_warnings(active_only=True)
+    return [dict(r) for r in rows]
+
+
+@router.patch("/warnings/{warning_id}/deactivate")
+async def deactivate_warning(warning_id: str, sub: str = Depends(_verify_token)) -> dict:
+    """Deactivate (dismiss) a warning so it no longer appears in the app."""
+    record = warning_db.deactivate_warning(warning_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Warning not found")
+    logger.info("Admin %s deactivated warning %s", sub, warning_id)
+    return {"message": "Warning deactivated", "id": warning_id}

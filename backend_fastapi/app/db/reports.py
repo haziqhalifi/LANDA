@@ -288,8 +288,9 @@ def reject_report(report_id: str, *, resolved_by: str, reason: str) -> ReportRec
 
 def delete_report(report_id: str) -> bool:
     sb = get_client()
-    sb.table("reports").delete().eq("id", report_id).execute()
-    return True
+    res = sb.table("reports").delete().eq("id", report_id).execute()
+    # supabase-py returns the deleted rows in res.data; empty list = nothing deleted (RLS block or wrong ID)
+    return bool(res.data)
 
 
 def expire_old_reports() -> int:
@@ -378,6 +379,20 @@ def get_validated_flood_reports_since(minutes: int = 2) -> list[ReportRecord]:
         .select("*")
         .eq("status", "validated")
         .eq("report_type", "flood")
+        .gte("updated_at", cutoff)
+        .execute()
+    )
+    return res.data or []
+
+
+def get_validated_reports_since(minutes: int = 2) -> list[ReportRecord]:
+    """Return ALL validated reports (any type) from the last N minutes (for SMS scheduler)."""
+    sb = get_client()
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+    res = (
+        sb.table("reports")
+        .select("*")
+        .eq("status", "validated")
         .gte("updated_at", cutoff)
         .execute()
     )

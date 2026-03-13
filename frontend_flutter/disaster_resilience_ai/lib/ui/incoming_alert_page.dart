@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:disaster_resilience_ai/models/warning_model.dart';
+import 'package:disaster_resilience_ai/services/api_service.dart';
+import 'package:disaster_resilience_ai/services/notification_service.dart';
 import 'package:disaster_resilience_ai/ui/emergency_alert_page.dart';
 import 'package:disaster_resilience_ai/utils/accessibility_settings.dart';
 
@@ -39,6 +42,11 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
   Timer? _dismissCountdownTimer;
   bool _reducedMotionEnabled = false;
   bool _hapticOnlyAlertsEnabled = false;
+
+  // Check-in state
+  bool _checkinSubmitting = false;
+  String? _checkinStatus; // 'safe' | 'needs_help' | null
+  final ApiService _api = ApiService();
 
   @override
   void initState() {
@@ -158,6 +166,7 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
 
   void _acknowledge() {
     _stopAlertEffects();
+    NotificationService.instance.clearActiveAlert(widget.warning.id);
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => EmergencyAlertPage(warning: widget.warning),
@@ -168,7 +177,50 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
   void _dismiss() {
     if (_dismissCountdown > 0) return;
     _stopAlertEffects();
+    NotificationService.instance.dismissWarning(widget.warning.id);
+    NotificationService.instance.clearActiveAlert(widget.warning.id);
     Navigator.of(context).pop();
+  }
+
+  Future<void> _submitCheckin(String status) async {
+    if (_checkinSubmitting || _checkinStatus != null) return;
+    // Stop alarm immediately — don't wait for the API call
+    _stopAlertEffects();
+    NotificationService.instance.dismissWarning(widget.warning.id);
+    NotificationService.instance.clearActiveAlert(widget.warning.id);
+    setState(() => _checkinSubmitting = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_access_token') ?? '';
+      if (token.isNotEmpty) {
+        await _api.selfCheckin(accessToken: token, status: status);
+      }
+      if (!mounted) return;
+      setState(() => _checkinStatus = status);
+
+      if (status == 'safe') {
+        // Confirmed safe → auto-dismiss after brief confirmation
+        await Future.delayed(const Duration(milliseconds: 1500));
+        if (mounted) Navigator.of(context).pop();
+      } else {
+        // Needs help → go to EmergencyAlertPage for evacuation route
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => EmergencyAlertPage(warning: widget.warning),
+            ),
+          );
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not update status — check your connection.')),
+        );
+        setState(() => _checkinSubmitting = false);
+      }
+    }
   }
 
   // ── UI ──────────────────────────────────────────────────────────────────
@@ -201,13 +253,13 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
           child: SafeArea(
             child: Column(
               children: [
-                const SizedBox(height: 32),
+                const SizedBox(height: 16),
                 // ── Alert level badge ──
                 _buildAlertBadge(warning),
-                const SizedBox(height: 28),
+                const SizedBox(height: 16),
                 // ── Pulsating icon ──
                 _buildPulsingIcon(warning),
-                const SizedBox(height: 28),
+                const SizedBox(height: 16),
                 // ── Title ──
                 Semantics(
                   header: true,
@@ -224,24 +276,28 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 32),
                   child: Text(
                     warning.title,
                     textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 20,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
-                const Spacer(),
-                // ── Slide-up detail card ──
-                SlideTransition(
-                  position: _slideAnimation,
-                  child: _buildDetailCard(warning),
+                const SizedBox(height: 8),
+                // ── Slide-up detail card fills remaining space ──
+                Expanded(
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: _buildDetailCard(warning),
+                  ),
                 ),
               ],
             ),
@@ -331,10 +387,12 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
   }
 
   Widget _buildDetailCard(Warning warning) {
+    final hazardColor = _hazardColor(warning.hazardType);
+    final canDismiss = _dismissCountdown == 0;
+
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),

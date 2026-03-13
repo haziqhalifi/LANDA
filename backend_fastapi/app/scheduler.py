@@ -32,25 +32,28 @@ async def _job_fetch_metmalaysia() -> None:
         logger.error("[scheduler] MetMalaysia failed: %s", exc)
 
 
-async def _job_monitor_flood_reports() -> None:
-    """Send Twilio SMS flood alerts for reports validated in the last 2 minutes."""
+async def _job_monitor_validated_reports() -> None:
+    """Send SMS alerts for all validated reports (any type) from the last 2 minutes."""
     try:
-        from app.services.notifications import broadcast_flood_report
+        from app.services.notifications import broadcast_flood_report, broadcast_report_alert
         from app.db import reports as report_db
 
         recent = await asyncio.to_thread(
-            report_db.get_validated_flood_reports_since, minutes=2
+            report_db.get_validated_reports_since, minutes=2
         )
         for report in recent:
             try:
-                await broadcast_flood_report(report)
+                if report.get("report_type") == "flood":
+                    await broadcast_flood_report(report)
+                else:
+                    await broadcast_report_alert(report)
             except Exception as exc:
                 logger.error(
                     "[scheduler] broadcast failed for report %s: %s",
                     report["id"], exc,
                 )
     except Exception as exc:
-        logger.error("[scheduler] monitor_flood_reports failed: %s", exc)
+        logger.error("[scheduler] monitor_validated_reports failed: %s", exc)
 
 
 async def _job_expire_old_reports() -> None:
@@ -191,9 +194,9 @@ async def _job_check_siren_auto_stop() -> None:
 
 
 def start_scheduler() -> None:
-    scheduler.add_job(_job_fetch_metmalaysia,     "interval", minutes=5,  id="metmalaysia")
-    scheduler.add_job(_job_monitor_flood_reports, "interval", minutes=2,  id="flood_monitor")
-    scheduler.add_job(_job_ai_validate_reports,   "interval", minutes=3,  id="ai_validate")
+    scheduler.add_job(_job_fetch_metmalaysia,          "interval", minutes=5,  id="metmalaysia")
+    scheduler.add_job(_job_monitor_validated_reports,  "interval", minutes=2,  id="flood_monitor")
+    scheduler.add_job(_job_ai_validate_reports,        "interval", minutes=3,  id="ai_validate")
     scheduler.add_job(_job_check_siren_auto_stop, "interval", minutes=1,  id="siren_auto_stop")
     scheduler.add_job(_job_expire_old_reports,    "cron",     hour=0, minute=0, id="expire")
     scheduler.start()

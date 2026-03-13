@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:disaster_resilience_ai/localization/app_language.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
 import 'package:disaster_resilience_ai/services/weather_service.dart';
 import 'package:disaster_resilience_ai/ui/submit_report_page.dart';
+import 'package:disaster_resilience_ai/ui/location_news_page.dart';
+import 'package:disaster_resilience_ai/ui/family_checkin_page.dart';
 
 class ReportsTab extends StatefulWidget {
   const ReportsTab({super.key, required this.accessToken});
@@ -19,9 +23,10 @@ class ReportsTab extends StatefulWidget {
 class _ReportsTabState extends State<ReportsTab> {
   final ApiService _api = ApiService();
   final WeatherService _weather = WeatherService();
-  bool _loadingLiveReports = false;
+  bool _loadingLiveReports = true; // true from the start so spinner shows immediately
   String? _liveReportsError;
   List<_ReportItem> _liveItems = [];
+  int _retryCount = 0;
   double _userLat = 3.8077;
   double _userLon = 103.3260;
   double _currentLat = 3.8077;
@@ -29,49 +34,71 @@ class _ReportsTabState extends State<ReportsTab> {
   String _locationName = 'My Location';
   bool _isCurrentLocation = true;
   final Set<String> _vouchingIds = <String>{};
+  Timer? _refreshTimer;
+  List<Map<String, dynamic>> _nearbyFloodReports = [];
+  String? _myCheckinStatus;
+  bool _checkinLoading = false;
 
   @override
   void initState() {
     super.initState();
+    // Load reports immediately with default location — don't wait for GPS
+    _loadNearbyReports();
+    // Fetch real location in background and refresh once ready
     _initLocation();
+    // Auto-refresh every 60s so resolved/rejected reports disappear promptly
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (mounted) _loadNearbyReports();
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _initLocation() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (serviceEnabled) {
-        var permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-        }
-        if (permission == LocationPermission.always ||
-            permission == LocationPermission.whileInUse) {
-          final pos = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.medium,
-            ),
-          );
-          _userLat = pos.latitude;
-          _userLon = pos.longitude;
-          _currentLat = pos.latitude;
-          _currentLon = pos.longitude;
-          final place = await _weather.fetchLocationName(
-            latitude: pos.latitude,
-            longitude: pos.longitude,
-          );
-          if (mounted && place != null && place.isNotEmpty) {
-            setState(() => _locationName = place);
-          }
-        }
+      if (!serviceEnabled) return;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission != LocationPermission.always &&
+          permission != LocationPermission.whileInUse) return;
+
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+        ),
+      ).timeout(const Duration(seconds: 10));
+
+      if (!mounted) return;
+      _userLat = pos.latitude;
+      _userLon = pos.longitude;
+      _currentLat = pos.latitude;
+      _currentLon = pos.longitude;
+
+      // Refresh reports with real coordinates
+      _loadNearbyReports();
+
+      final place = await _weather.fetchLocationName(
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      );
+      if (mounted && place != null && place.isNotEmpty) {
+        setState(() => _locationName = place);
       }
     } catch (_) {
-      // keep defaults
+      // GPS unavailable — keep defaults, reports already loaded above
     }
-    if (mounted) _loadNearbyReports();
   }
 
-  Future<void> _loadNearbyReports() async {
+  Future<void> _loadNearbyReports({bool manual = false}) async {
     if (!mounted) return;
+    if (manual) _retryCount = 0; // reset backoff on manual retry
     setState(() {
       _loadingLiveReports = true;
       _liveReportsError = null;
@@ -94,7 +121,7 @@ class _ReportsTabState extends State<ReportsTab> {
         latitude: _userLat,
         longitude: _userLon,
         radiusKm: 50,
-        statusFilter: 'validated,pending',
+        statusFilter: 'validated',
       );
       final rows = (payload['reports'] as List<dynamic>? ?? const []);
       final parsed = rows
@@ -102,18 +129,107 @@ class _ReportsTabState extends State<ReportsTab> {
           .map(_reportItemFromApi)
           .toList();
 
+      // Derive nearby flood reports from the same fetch — no second API call needed
+      final nearbyFloods = rows
+          .whereType<Map<String, dynamic>>()
+          .where((r) =>
+              r['report_type'] == 'flood' &&
+              r['status'] == 'validated' &&
+              _distanceKm(
+                _currentLat, _currentLon,
+                (r['latitude'] as num?)?.toDouble() ?? _currentLat,
+                (r['longitude'] as num?)?.toDouble() ?? _currentLon,
+              ) <= 10.0)
+          .toList();
+
+      // Restore persisted checkin status for the current nearby flood report
+      String? savedCheckin;
+      if (nearbyFloods.isNotEmpty) {
+        final floodId = nearbyFloods.first['id']?.toString() ?? '';
+        if (floodId.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          savedCheckin = prefs.getString('checkin_$floodId');
+        }
+      }
+
       if (mounted) {
         setState(() {
           _liveItems = parsed;
+          _nearbyFloodReports = nearbyFloods;
           _loadingLiveReports = false;
+          _retryCount = 0;
+          // Only restore if user hasn't manually changed status this session
+          if (savedCheckin != null && _myCheckinStatus == null) {
+            _myCheckinStatus = savedCheckin;
+          }
+          // Clear checkin if flood is gone
+          if (nearbyFloods.isEmpty) _myCheckinStatus = null;
         });
       }
     } catch (e) {
       if (mounted) {
+        final msg = e.toString().replaceFirst('Exception: ', '');
         setState(() {
           _loadingLiveReports = false;
-          _liveReportsError = e.toString().replaceFirst('Exception: ', '');
+          _liveReportsError = msg;
         });
+        // Auto-retry up to 3 times with increasing delay (2s, 4s, 8s)
+        if (_retryCount < 3) {
+          _retryCount++;
+          final delay = Duration(seconds: 2 * _retryCount);
+          Future.delayed(delay, () {
+            if (mounted && _liveReportsError != null) {
+              _loadNearbyReports();
+            }
+          });
+        }
+      }
+    }
+  }
+
+  double _distanceKm(double lat1, double lon1, double lat2, double lon2) {
+    const r = 6371.0;
+    final dLat = (lat2 - lat1) * math.pi / 180;
+    final dLon = (lon2 - lon1) * math.pi / 180;
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180) *
+            math.cos(lat2 * math.pi / 180) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  }
+
+  Future<void> _selfCheckin(String status) async {
+    if (_checkinLoading) return;
+    setState(() { _checkinLoading = true; });
+    try {
+      await _api.selfCheckin(accessToken: widget.accessToken, status: status);
+      // Persist checkin so it survives tab rebuilds and app restarts
+      if (_nearbyFloodReports.isNotEmpty) {
+        final floodId = _nearbyFloodReports.first['id']?.toString() ?? '';
+        if (floodId.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('checkin_$floodId', status);
+        }
+      }
+      if (mounted) {
+        setState(() { _myCheckinStatus = status; _checkinLoading = false; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(status == 'safe'
+              ? 'Status updated: You are SAFE. Your family has been notified.'
+              : 'Status updated: DANGER reported. Your family and admin have been notified.'),
+          backgroundColor: status == 'safe' ? Colors.green.shade700 : Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() { _checkinLoading = false; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ));
       }
     }
   }
@@ -135,7 +251,6 @@ class _ReportsTabState extends State<ReportsTab> {
         .map((e) => e.toString())
         .where((e) => e.isNotEmpty)
         .toList();
-
     final iconSet = _iconSetForType(reportType);
     final statusSet = _statusSetForStatus(status);
     return _ReportItem(
@@ -146,9 +261,7 @@ class _ReportsTabState extends State<ReportsTab> {
           : 'Community-submitted report',
       location: locationName.isNotEmpty ? locationName : _locationName,
       time: createdAt != null ? _timeAgo(createdAt) : 'Recently',
-      distance: distanceKm != null
-          ? '${distanceKm.toStringAsFixed(1)} km'
-          : null,
+      distance: distanceKm != null ? '${distanceKm.toStringAsFixed(1)} km' : null,
       icon: iconSet.icon,
       iconBgLight: iconSet.iconBgLight,
       iconBgDark: iconSet.iconBgDark,
@@ -166,6 +279,143 @@ class _ReportsTabState extends State<ReportsTab> {
       vulnerablePerson: row['vulnerable_person'] == true,
     );
   }
+
+  // ── Safety self-checkin banner (SMS feature) ──────────────────────────────
+
+  Widget _buildSafetyBanner({bool isDark = false}) {
+    if (_nearbyFloodReports.isEmpty) return const SizedBox.shrink();
+    final flood = _nearbyFloodReports.first;
+    final location = flood['location_name'] as String? ?? 'nearby area';
+    final distKm = flood['distance_km'] as num?;
+    final distText = distKm != null ? ' (${distKm.toStringAsFixed(1)} km)' : '';
+    final alreadyChecked = _myCheckinStatus != null;
+    final isSafe = _myCheckinStatus == 'safe';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: alreadyChecked
+            ? (isSafe
+                ? (isDark ? const Color(0xFF14291A) : Colors.green.shade50)
+                : (isDark ? const Color(0xFF2A1010) : Colors.red.shade50))
+            : (isDark ? const Color(0xFF2A1A0A) : Colors.orange.shade50),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: alreadyChecked
+              ? (isSafe ? Colors.green.shade400 : Colors.red.shade400)
+              : Colors.orange.shade400,
+          width: 1.5,
+        ),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(
+            alreadyChecked ? (isSafe ? Icons.check_circle : Icons.warning_rounded) : Icons.water_damage,
+            color: alreadyChecked ? (isSafe ? Colors.green : Colors.red) : Colors.orange,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              alreadyChecked
+                  ? (isSafe ? 'You reported: SAFE' : 'You reported: NEED HELP')
+                  : 'Flood confirmed near $location$distText',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: alreadyChecked
+                    ? (isSafe
+                        ? (isDark ? Colors.green.shade300 : Colors.green.shade800)
+                        : (isDark ? Colors.red.shade300 : Colors.red.shade800))
+                    : (isDark ? Colors.orange.shade300 : Colors.orange.shade900),
+              ),
+            ),
+          ),
+          if (_nearbyFloodReports.length > 1)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade600,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '${_nearbyFloodReports.length}',
+                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+            ),
+        ]),
+        if (!alreadyChecked) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Are you safe? Confirm your status — your family and the admin will be notified.',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark ? Colors.orange.shade200 : Colors.orange.shade800,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: _checkinLoading
+                  ? const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+                  : ElevatedButton.icon(
+                      onPressed: () => _selfCheckin('safe'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green.shade600,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.check_circle_outline, size: 16),
+                      label: const Text("I'm SAFE", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _checkinLoading
+                  ? const SizedBox.shrink()
+                  : ElevatedButton.icon(
+                      onPressed: () => _selfCheckin('needs_help'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red.shade600,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      icon: const Icon(Icons.warning_rounded, size: 16),
+                      label: const Text('I Need Help', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    ),
+            ),
+          ]),
+        ] else ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: Text(
+                'Your family has been notified. Tap to update your status.',
+                style: TextStyle(fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+              ),
+            ),
+            GestureDetector(
+              onTap: () => setState(() { _myCheckinStatus = null; }),
+              child: Text('Change', style: TextStyle(fontSize: 11, color: isDark ? Colors.blue.shade300 : Colors.blue.shade700, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => FamilyCheckinPage(accessToken: widget.accessToken),
+              )),
+              child: Text('View Family', style: TextStyle(fontSize: 11, color: isDark ? Colors.green.shade300 : Colors.green.shade700, fontWeight: FontWeight.bold)),
+            ),
+          ]),
+        ],
+      ]),
+    );
+  }
+
+
+  // ── Location search bottom sheet ───────────────────────────────────────────
 
   _IconSet _iconSetForType(String reportType) {
     switch (reportType) {
@@ -294,11 +544,6 @@ class _ReportsTabState extends State<ReportsTab> {
         setState(() => _vouchingIds.remove(reportId));
       }
     }
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
   }
 
   @override
@@ -435,6 +680,7 @@ class _ReportsTabState extends State<ReportsTab> {
               ),
             ],
             const SizedBox(height: 14),
+            if (_nearbyFloodReports.isNotEmpty) _buildSafetyBanner(isDark: isDark),
             Text(
               tr(en: 'Nearby Activity', ms: 'Aktiviti Berhampiran', zh: '附近动态'),
               style: TextStyle(
@@ -488,11 +734,22 @@ class _ReportsTabState extends State<ReportsTab> {
                         _liveReportsError!,
                         style: TextStyle(color: subtitleColor, fontSize: 12),
                       ),
+                      if (_retryCount < 3) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          tr(
+                            en: 'Auto-retrying… (attempt $_retryCount/3)',
+                            ms: 'Cuba semula secara automatik… (percubaan $_retryCount/3)',
+                            zh: '自动重试中… (第 $_retryCount/3 次)',
+                          ),
+                          style: TextStyle(color: subtitleColor, fontSize: 11, fontStyle: FontStyle.italic),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
-                        onPressed: _loadNearbyReports,
+                        onPressed: () => _loadNearbyReports(manual: true),
                         icon: const Icon(Icons.refresh_rounded, size: 16),
-                        label: Text(tr(en: 'Retry', ms: 'Cuba Lagi', zh: '重试')),
+                        label: Text(tr(en: 'Retry Now', ms: 'Cuba Sekarang', zh: '立即重试')),
                       ),
                     ],
                   ),

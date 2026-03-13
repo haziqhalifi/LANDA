@@ -304,10 +304,6 @@ async def gov_alerts() -> dict:
         return {"count": len(rows), "alerts": rows}
     except Exception as exc:
         return {"count": 0, "alerts": [], "error": str(exc)}
-    return WarningList(
-        count=len(matched),
-        warnings=[_record_to_out(r) for r in matched],
-    )
 
 
 # ── GET /warnings/since — new warnings after a timestamp ─────────────────────

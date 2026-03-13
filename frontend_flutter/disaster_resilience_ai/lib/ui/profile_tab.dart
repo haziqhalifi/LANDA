@@ -44,35 +44,19 @@ class _ProfileTabState extends State<ProfileTab> {
   bool _largeTextEnabled = false;
   bool _reducedMotionEnabled = false;
   bool _hapticOnlyAlertsEnabled = false;
+  String? _savedPhone; // phone stored in devices table
   String _locationLabel = 'Locating...';
   double _currentLat = 3.8077;
   double _currentLon = 103.3260;
   double _preparednessProgress = 0.0;
   List<Map<String, dynamic>> _myReports = [];
+
   bool _loadingMyReports = true;
 
   static const List<String> _checklistIds = [
-    'b1',
-    'b2',
-    'b3',
-    'b4',
-    'b5',
-    'b6',
-    'b7',
-    'd1',
-    'd2',
-    'd3',
-    'd4',
-    'd5',
-    'd6',
-    'd7',
-    'a1',
-    'a2',
-    'a3',
-    'a4',
-    'a5',
-    'a6',
-    'a7',
+    'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7',
+    'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7',
+    'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7',
   ];
 
   @override
@@ -81,6 +65,7 @@ class _ProfileTabState extends State<ProfileTab> {
     _fetchProfile();
     _loadNotificationPreference();
     _loadAccessibilitySettings();
+    _fetchSavedPhone();
     _fetchCurrentLocation();
     _loadPreparedness();
     _loadMyReports();
@@ -127,6 +112,73 @@ class _ProfileTabState extends State<ProfileTab> {
     }
   }
 
+  Future<void> _fetchSavedPhone() async {
+    try {
+      final device = await _api.getDevice(widget.accessToken);
+      if (mounted) setState(() => _savedPhone = device['phone_number'] as String?);
+    } catch (_) {}
+  }
+
+  Future<void> _showPhoneDialog() async {
+    final ctrl = TextEditingController(text: _savedPhone ?? '');
+    final saved = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('SMS Alert Number'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text(
+            'Enter your Malaysian mobile number. When a disaster is confirmed near you, the system will send an SMS alert to this number.',
+            style: TextStyle(fontSize: 13, height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            autofocus: true,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'Phone number',
+              hintText: '+60175815030',
+              prefixIcon: Icon(Icons.phone_android),
+              border: OutlineInputBorder(),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2D5927), foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (saved == null || saved.isEmpty) return;
+    String phone = saved;
+    if (phone.startsWith('0')) phone = '+60${phone.substring(1)}';
+    if (!phone.startsWith('+')) phone = '+$phone';
+    try {
+      await _api.registerDevice(accessToken: widget.accessToken, phoneNumber: phone);
+      if (mounted) {
+        setState(() => _savedPhone = phone);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('SMS alert number saved: $phone'),
+          backgroundColor: const Color(0xFF2D5927),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+
   Future<void> _loadPreparedness() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -139,9 +191,7 @@ class _ProfileTabState extends State<ProfileTab> {
       setState(() {
         _preparednessProgress = progress.clamp(0.0, 1.0);
       });
-    } catch (_) {
-      // Keep default value when local checklist state can't be loaded.
-    }
+    } catch (_) {}
   }
 
   Future<void> _fetchCurrentLocation() async {
@@ -155,18 +205,12 @@ class _ProfileTabState extends State<ProfileTab> {
       if (permission == LocationPermission.always ||
           permission == LocationPermission.whileInUse) {
         final pos = await Geolocator.getCurrentPosition(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.medium,
-          ),
+          locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
         );
         lat = pos.latitude;
         lon = pos.longitude;
       }
-
-      final place = await _weatherService.fetchLocationName(
-        latitude: lat,
-        longitude: lon,
-      );
+      final place = await _weatherService.fetchLocationName(latitude: lat, longitude: lon);
       if (!mounted) return;
       setState(() {
         _currentLat = lat;
@@ -178,8 +222,6 @@ class _ProfileTabState extends State<ProfileTab> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _currentLat = lat;
-        _currentLon = lon;
         _locationLabel = 'Location unavailable';
       });
     }
@@ -1429,6 +1471,14 @@ class _ProfileTabState extends State<ProfileTab> {
             ),
             const SizedBox(height: 8),
             _buildSettingItem(
+              tr(en: 'SMS Alert Number', ms: 'Nombor SMS Amaran', zh: '短信警报号码'),
+              icon: Icons.sms_outlined,
+              subtitle: _savedPhone != null && _savedPhone!.isNotEmpty
+                  ? _savedPhone!
+                  : tr(en: 'Not set — tap to add your number', ms: 'Belum ditetapkan — ketik untuk tambah', zh: '未设置 — 点击添加号码'),
+              onTap: _showPhoneDialog,
+            ),
+            _buildSettingItem(
               tr(en: 'Language', ms: 'Bahasa', zh: '语言'),
               icon: Icons.translate,
               subtitle:
@@ -1441,10 +1491,10 @@ class _ProfileTabState extends State<ProfileTab> {
               trailing: Switch(
                 value: _notificationsEnabled,
                 onChanged: _setNotificationsEnabled,
-                activeTrackColor: switchActiveTrack,
-                activeThumbColor: switchActiveThumb,
-                inactiveTrackColor: switchInactiveTrack,
-                inactiveThumbColor: switchInactiveThumb,
+                thumbColor: WidgetStateProperty.resolveWith((states) =>
+                    states.contains(WidgetState.selected) ? switchActiveThumb : switchInactiveThumb),
+                trackColor: WidgetStateProperty.resolveWith((states) =>
+                    states.contains(WidgetState.selected) ? switchActiveTrack : switchInactiveTrack),
               ),
             ),
             _buildSettingItem(
@@ -1556,7 +1606,6 @@ class _ProfileTabState extends State<ProfileTab> {
                 value: _largeTextEnabled,
                 onChanged: _setLargeTextEnabled,
                 activeTrackColor: switchActiveTrack,
-                activeThumbColor: switchActiveThumb,
                 inactiveTrackColor: switchInactiveTrack,
                 inactiveThumbColor: switchInactiveThumb,
               ),
@@ -1573,7 +1622,6 @@ class _ProfileTabState extends State<ProfileTab> {
                 value: _reducedMotionEnabled,
                 onChanged: _setReducedMotionEnabled,
                 activeTrackColor: switchActiveTrack,
-                activeThumbColor: switchActiveThumb,
                 inactiveTrackColor: switchInactiveTrack,
                 inactiveThumbColor: switchInactiveThumb,
               ),
@@ -1594,7 +1642,6 @@ class _ProfileTabState extends State<ProfileTab> {
                 value: _hapticOnlyAlertsEnabled,
                 onChanged: _setHapticOnlyAlertsEnabled,
                 activeTrackColor: switchActiveTrack,
-                activeThumbColor: switchActiveThumb,
                 inactiveTrackColor: switchInactiveTrack,
                 inactiveThumbColor: switchInactiveThumb,
               ),
@@ -1607,10 +1654,10 @@ class _ProfileTabState extends State<ProfileTab> {
                 onChanged: (value) {
                   themeController.setDarkMode(value);
                 },
-                activeTrackColor: switchActiveTrack,
-                activeThumbColor: switchActiveThumb,
-                inactiveTrackColor: switchInactiveTrack,
-                inactiveThumbColor: switchInactiveThumb,
+                thumbColor: WidgetStateProperty.resolveWith((states) =>
+                    states.contains(WidgetState.selected) ? switchActiveThumb : switchInactiveThumb),
+                trackColor: WidgetStateProperty.resolveWith((states) =>
+                    states.contains(WidgetState.selected) ? switchActiveTrack : switchInactiveTrack),
               ),
             ),
             _buildDangerOptionItem(
