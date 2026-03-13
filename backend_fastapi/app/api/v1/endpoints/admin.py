@@ -149,13 +149,54 @@ async def get_report(report_id: str, sub: str = Depends(_verify_token)) -> dict:
     return row
 
 
+_REPORT_TYPE_TO_HAZARD = {
+    "flood":             "flood",
+    "landslide":         "landslide",
+    "blocked_road":      "infrastructure",
+    "medical_emergency": "aid",
+}
+
+_REPORT_TYPE_TO_LEVEL = {
+    "flood":             "warning",
+    "landslide":         "warning",
+    "blocked_road":      "observe",
+    "medical_emergency": "warning",
+}
+
+
 @router.post("/reports/{report_id}/approve")
 async def approve_report(report_id: str, sub: str = Depends(_verify_token)) -> dict:
     row = report_db.get_report(report_id)
     if not row:
         raise HTTPException(status_code=404, detail="Report not found")
     updated = report_db.validate_report(report_id, validated_by="admin")
-    return {"message": "Report approved", "report": updated}
+
+    # Auto-create a Warning so the mobile app alert system picks it up
+    warning_record = None
+    try:
+        report_type = (row.get("report_type") or "flood").lower()
+        hazard_type = _REPORT_TYPE_TO_HAZARD.get(report_type, "flood")
+        alert_level = _REPORT_TYPE_TO_LEVEL.get(report_type, "warning")
+        location = row.get("location_name") or "Unknown location"
+        warning_record = warning_db.create_warning(
+            title=f"{hazard_type.capitalize()} Alert — {location}",
+            description=row.get("description") or "Community report validated by admin.",
+            hazard_type=hazard_type,
+            alert_level=alert_level,
+            latitude=float(row["latitude"]),
+            longitude=float(row["longitude"]),
+            radius_km=5.0,
+            source="Admin (Community Report)",
+        )
+        logger.info("Admin %s approved report %s → created warning %s", sub, report_id, warning_record["id"])
+    except Exception as exc:
+        logger.warning("Could not auto-create warning for report %s: %s", report_id, exc)
+
+    return {
+        "message": "Report approved",
+        "report": updated,
+        "warning_id": warning_record["id"] if warning_record else None,
+    }
 
 
 @router.post("/reports/{report_id}/reject")
