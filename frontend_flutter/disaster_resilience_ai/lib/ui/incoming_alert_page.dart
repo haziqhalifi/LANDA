@@ -349,6 +349,9 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
   }
 
   Widget _buildDetailCard(Warning warning) {
+    final hazardColor = _hazardColor(warning.hazardType);
+    final canDismiss = _dismissCountdown == 0;
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -368,262 +371,173 @@ class _IncomingAlertPageState extends State<IncomingAlertPage>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-          // ── Hazard type chip ──
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: _hazardColor(warning.hazardType).withAlpha(30),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  _hazardIcon(warning.hazardType),
-                  size: 16,
-                  color: _hazardColor(warning.hazardType),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  warning.hazardType.displayName.toUpperCase(),
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                    color: _hazardColor(warning.hazardType),
-                    letterSpacing: 1,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          // ── Alert message ──
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.grey[50],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey[200]!),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.record_voice_over,
-                      size: 16,
-                      color: Colors.grey[600],
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Alert Message',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  warning.description,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    height: 1.5,
-                    color: Color(0xFF1E293B),
-                  ),
-                  maxLines: 5,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          if (_dismissCountdown > 0)
-            Text(
-              'Dismiss enabled in ${_dismissCountdown}s',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.red[700],
-              ),
-            ),
-          if (_dismissCountdown > 0) const SizedBox(height: 8),
-          // ── Source & time ──
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.source, size: 13, color: Colors.grey[500]),
-              const SizedBox(width: 4),
-              Text(
-                'Source: ${warning.source}',
-                style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-              ),
-              const SizedBox(width: 12),
-              Icon(Icons.access_time, size: 13, color: Colors.grey[500]),
-              const SizedBox(width: 4),
-              Text(
-                _formatTime(warning.createdAt),
-                style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          // ── Are you safe? check-in ──
-          if (_checkinStatus == null) ...[
-            const SizedBox(height: 12),
+            // ── Hazard type chip ──
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
-                color: Colors.orange[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange[200]!),
+                color: hazardColor.withAlpha(25),
+                borderRadius: BorderRadius.circular(20),
               ),
-              child: Column(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
+                  Icon(Icons.menu, size: 14, color: hazardColor),
+                  const SizedBox(width: 6),
                   Text(
-                    'Are you safe?',
+                    warning.hazardType.displayName.toUpperCase(),
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Colors.orange[900],
+                      fontSize: 12,
+                      color: hazardColor,
+                      letterSpacing: 1.2,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            // ── Alert message box ──
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8F9FA),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE9ECEF)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Row(
                     children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _checkinSubmitting ? null : () => _submitCheckin('safe'),
-                          icon: const Icon(Icons.check_circle_outline, size: 18),
-                          label: const Text("I'M SAFE"),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green[600],
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
+                      Icon(Icons.person_outline, size: 15, color: Colors.grey[500]),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Alert Message',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11,
+                          color: Colors.grey[500],
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _checkinSubmitting ? null : () => _submitCheckin('needs_help'),
-                          icon: const Icon(Icons.sos, size: 18),
-                          label: const Text('NEED HELP'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red[700],
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    warning.description,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      height: 1.5,
+                      color: Color(0xFF1E293B),
+                    ),
+                    maxLines: 5,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 10),
+                  // Source & time inside the card
+                  Row(
+                    children: [
+                      Icon(Icons.smartphone, size: 12, color: Colors.grey[400]),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Source: ${warning.source}',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                      ),
+                      const SizedBox(width: 14),
+                      Icon(Icons.access_time, size: 12, color: Colors.grey[400]),
+                      const SizedBox(width: 4),
+                      Text(
+                        _formatTime(warning.createdAt),
+                        style: TextStyle(fontSize: 11, color: Colors.grey[400]),
                       ),
                     ],
                   ),
                 ],
               ),
             ),
-          ] else ...[
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(
-                color: _checkinStatus == 'safe' ? Colors.green[50] : Colors.red[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _checkinStatus == 'safe' ? Colors.green[300]! : Colors.red[300]!,
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+            const SizedBox(height: 16),
+            // ── Action buttons ──
+            if (_checkinStatus == null) ...[
+              Row(
                 children: [
-                  Icon(
-                    _checkinStatus == 'safe' ? Icons.check_circle : Icons.sos,
-                    color: _checkinStatus == 'safe' ? Colors.green[700] : Colors.red[700],
-                    size: 18,
+                  // DISMISS button
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: canDismiss ? _dismiss : null,
+                      icon: const Icon(Icons.close, size: 16),
+                      label: Text(
+                        canDismiss ? 'DISMISS' : 'DISMISS (${_dismissCountdown}s)',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.grey[700],
+                        side: BorderSide(color: Colors.grey[350]!),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _checkinStatus == 'safe' ? 'You reported: SAFE' : 'You reported: NEED HELP',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: _checkinStatus == 'safe' ? Colors.green[800] : Colors.red[800],
+                  const SizedBox(width: 10),
+                  // VIEW DETAILS button
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _acknowledge,
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: const Text(
+                        'VIEW DETAILS',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFC62828),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          // ── Action buttons ──
-          Row(
-            children: [
-              // Dismiss
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _dismissCountdown == 0 ? _dismiss : null,
-                  icon: const Icon(Icons.close, size: 20),
-                  label: Text(
-                    _dismissCountdown == 0
-                        ? 'DISMISS'
-                        : 'DISMISS (${_dismissCountdown}s)',
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey[700],
-                    side: BorderSide(color: Colors.grey[300]!),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+            ] else ...[
+              // Confirmation banner while navigating
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: _checkinStatus == 'safe' ? Colors.green[50] : Colors.red[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _checkinStatus == 'safe' ? Colors.green[300]! : Colors.red[300]!,
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              // View full details & evacuate
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  onPressed: _acknowledge,
-                  icon: Icon(
-                    warning.alertLevel == AlertLevel.evacuate
-                        ? Icons.directions_run
-                        : Icons.open_in_new,
-                    size: 20,
-                  ),
-                  label: Text(
-                    warning.alertLevel == AlertLevel.evacuate
-                        ? 'EVACUATE NOW'
-                        : 'VIEW DETAILS',
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFD32F2F),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (_checkinSubmitting)
+                      const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    else
+                      Icon(
+                        _checkinStatus == 'safe' ? Icons.check_circle : Icons.sos,
+                        color: _checkinStatus == 'safe' ? Colors.green[700] : Colors.red[700],
+                        size: 20,
+                      ),
+                    const SizedBox(width: 10),
+                    Text(
+                      _checkinStatus == 'safe'
+                          ? 'Marked SAFE — returning home…'
+                          : 'Alert sent — opening evacuation guide…',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: _checkinStatus == 'safe' ? Colors.green[800] : Colors.red[800],
+                      ),
                     ),
-                    textStyle: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
+                  ],
                 ),
               ),
             ],
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }

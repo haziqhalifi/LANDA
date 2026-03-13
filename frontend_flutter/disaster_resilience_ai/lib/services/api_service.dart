@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io' show SocketException;
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
@@ -196,6 +197,11 @@ class ApiService {
     for (var attempt = 0; attempt < _maxRetries; attempt++) {
       try {
         return await fn();
+      } on SocketException catch (e) {
+        lastError = e;
+        if (attempt < _maxRetries - 1) {
+          await Future<void>.delayed(_retryDelay);
+        }
       } on TimeoutException catch (e) {
         lastError = e;
         if (attempt < _maxRetries - 1) {
@@ -207,6 +213,10 @@ class ApiService {
           await Future<void>.delayed(_retryDelay);
         }
       }
+    }
+    // Distinguish "backend offline" from other network errors
+    if (lastError is SocketException) {
+      throw Exception('Backend offline. Make sure the server is running, then tap Retry.');
     }
     throw Exception(_connectivityErrorMessage());
   }

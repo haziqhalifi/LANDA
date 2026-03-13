@@ -21,9 +21,10 @@ class ReportsTab extends StatefulWidget {
 class _ReportsTabState extends State<ReportsTab> {
   final ApiService _api = ApiService();
   final WeatherService _weather = WeatherService();
-  bool _loadingLiveReports = false;
+  bool _loadingLiveReports = true; // true from the start so spinner shows immediately
   String? _liveReportsError;
   List<_ReportItem> _liveItems = [];
+  int _retryCount = 0;
   double _userLat = 3.8077;
   double _userLon = 103.3260;
   double _currentLat = 3.8077;
@@ -53,45 +54,53 @@ class _ReportsTabState extends State<ReportsTab> {
   @override
   void initState() {
     super.initState();
+    // Load reports immediately with default location — don't wait for GPS
+    _loadNearbyReports();
+    // Fetch real location in background and refresh once ready
     _initLocation();
   }
 
   Future<void> _initLocation() async {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (serviceEnabled) {
-        var permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          permission = await Geolocator.requestPermission();
-        }
-        if (permission == LocationPermission.always ||
-            permission == LocationPermission.whileInUse) {
-          final pos = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.medium,
-            ),
-          );
-          _userLat = pos.latitude;
-          _userLon = pos.longitude;
-          _currentLat = pos.latitude;
-          _currentLon = pos.longitude;
-          final place = await _weather.fetchLocationName(
-            latitude: pos.latitude,
-            longitude: pos.longitude,
-          );
-          if (mounted && place != null && place.isNotEmpty) {
-            setState(() => _locationName = place);
-          }
-        }
+      if (!serviceEnabled) return;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission != LocationPermission.always &&
+          permission != LocationPermission.whileInUse) return;
+
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+        ),
+      ).timeout(const Duration(seconds: 10));
+
+      if (!mounted) return;
+      _userLat = pos.latitude;
+      _userLon = pos.longitude;
+      _currentLat = pos.latitude;
+      _currentLon = pos.longitude;
+
+      // Refresh reports with real coordinates
+      _loadNearbyReports();
+
+      final place = await _weather.fetchLocationName(
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      );
+      if (mounted && place != null && place.isNotEmpty) {
+        setState(() => _locationName = place);
       }
     } catch (_) {
-      // keep defaults
+      // GPS unavailable — keep defaults, reports already loaded above
     }
-    if (mounted) _loadNearbyReports();
   }
 
-  Future<void> _loadNearbyReports() async {
+  Future<void> _loadNearbyReports({bool manual = false}) async {
     if (!mounted) return;
+    if (manual) _retryCount = 0; // reset backoff on manual retry
     setState(() {
       _loadingLiveReports = true;
       _liveReportsError = null;
@@ -114,7 +123,7 @@ class _ReportsTabState extends State<ReportsTab> {
         latitude: _userLat,
         longitude: _userLon,
         radiusKm: 50,
-        statusFilter: 'validated',
+        statusFilter: 'pending,validated',
       );
       final rows = (payload['reports'] as List<dynamic>? ?? const []);
       final parsed = rows
@@ -122,36 +131,58 @@ class _ReportsTabState extends State<ReportsTab> {
           .map(_reportItemFromApi)
           .toList();
 
+      // Derive nearby flood reports from the same fetch — no second API call needed
+      final nearbyFloods = rows
+          .whereType<Map<String, dynamic>>()
+          .where((r) =>
+              r['report_type'] == 'flood' &&
+              r['status'] == 'validated' &&
+              _distanceKm(
+                _currentLat, _currentLon,
+                (r['latitude'] as num?)?.toDouble() ?? _currentLat,
+                (r['longitude'] as num?)?.toDouble() ?? _currentLon,
+              ) <= 10.0)
+          .toList();
+
       if (mounted) {
         setState(() {
           _liveItems = parsed;
+          _nearbyFloodReports = nearbyFloods;
           _loadingLiveReports = false;
+          _retryCount = 0; // reset on success
         });
       }
     } catch (e) {
       if (mounted) {
+        final msg = e.toString().replaceFirst('Exception: ', '');
         setState(() {
           _loadingLiveReports = false;
-          _liveReportsError = e.toString().replaceFirst('Exception: ', '');
+          _liveReportsError = msg;
         });
+        // Auto-retry up to 3 times with increasing delay (2s, 4s, 8s)
+        if (_retryCount < 3) {
+          _retryCount++;
+          final delay = Duration(seconds: 2 * _retryCount);
+          Future.delayed(delay, () {
+            if (mounted && _liveReportsError != null) {
+              _loadNearbyReports();
+            }
+          });
+        }
       }
     }
-    _checkNearbyFloods();
   }
 
-  Future<void> _checkNearbyFloods() async {
-    try {
-      final data = await _api.fetchNearbyReports(
-        accessToken: widget.accessToken,
-        latitude: _currentLat,
-        longitude: _currentLon,
-        radiusKm: 10.0,
-        statusFilter: 'validated',
-      );
-      final all = (data['reports'] as List<dynamic>? ?? []);
-      final floods = all.where((r) => (r as Map)['report_type'] == 'flood').toList();
-      if (mounted) setState(() { _nearbyFloodReports = floods; });
-    } catch (_) {}
+  double _distanceKm(double lat1, double lon1, double lat2, double lon2) {
+    const r = 6371.0;
+    final dLat = (lat2 - lat1) * math.pi / 180;
+    final dLon = (lon2 - lon1) * math.pi / 180;
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180) *
+            math.cos(lat2 * math.pi / 180) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
   }
 
   Future<void> _selfCheckin(String status) async {
@@ -644,11 +675,22 @@ class _ReportsTabState extends State<ReportsTab> {
                         _liveReportsError!,
                         style: TextStyle(color: subtitleColor, fontSize: 12),
                       ),
+                      if (_retryCount < 3) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          tr(
+                            en: 'Auto-retrying… (attempt $_retryCount/3)',
+                            ms: 'Cuba semula secara automatik… (percubaan $_retryCount/3)',
+                            zh: '自动重试中… (第 $_retryCount/3 次)',
+                          ),
+                          style: TextStyle(color: subtitleColor, fontSize: 11, fontStyle: FontStyle.italic),
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
-                        onPressed: _loadNearbyReports,
+                        onPressed: () => _loadNearbyReports(manual: true),
                         icon: const Icon(Icons.refresh_rounded, size: 16),
-                        label: Text(tr(en: 'Retry', ms: 'Cuba Lagi', zh: '重试')),
+                        label: Text(tr(en: 'Retry Now', ms: 'Cuba Sekarang', zh: '立即重试')),
                       ),
                     ],
                   ),
