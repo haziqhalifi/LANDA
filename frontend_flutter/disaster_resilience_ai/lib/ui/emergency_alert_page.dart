@@ -360,8 +360,10 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   _buildInfoChip(Icons.access_time, timeAgo),
                   _buildInfoChip(Icons.radar, '${w.radiusKm} km radius'),
@@ -723,13 +725,18 @@ class _EmergencyAlertPageState extends State<EmergencyAlertPage> {
         children: [
           Icon(icon, color: Colors.white, size: 16),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              shadows: [Shadow(color: Colors.black38, blurRadius: 4)],
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 160),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                shadows: [Shadow(color: Colors.black38, blurRadius: 4)],
+              ),
             ),
           ),
         ],
