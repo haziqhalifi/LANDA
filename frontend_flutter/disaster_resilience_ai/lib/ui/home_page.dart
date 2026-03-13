@@ -1522,26 +1522,28 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       backgroundColor: pageBg,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: barBg,
-        foregroundColor: isDark
-            ? const Color(0xFFE5E7EB)
-            : const Color(0xFF111827),
-        surfaceTintColor: Colors.transparent,
-        scrolledUnderElevation: 1,
-        elevation: 0,
-        shadowColor: Colors.transparent,
-        centerTitle: isHomeTab,
-        titleSpacing: isHomeTab ? 0 : 16,
-        toolbarHeight: 64,
-        title: _buildTopBarTitle(isDark),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: borderColor),
-        ),
-        actions: _buildTopBarActions(isDark),
-      ),
+      appBar: isHomeTab
+          ? AppBar(
+              automaticallyImplyLeading: false,
+              backgroundColor: barBg,
+              foregroundColor: isDark
+                  ? const Color(0xFFE5E7EB)
+                  : const Color(0xFF111827),
+              surfaceTintColor: Colors.transparent,
+              scrolledUnderElevation: 1,
+              elevation: 0,
+              shadowColor: Colors.transparent,
+              centerTitle: true,
+              titleSpacing: 0,
+              toolbarHeight: 64,
+              title: _buildTopBarTitle(isDark),
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(1),
+                child: Container(height: 1, color: borderColor),
+              ),
+              actions: _buildTopBarActions(isDark),
+            )
+          : null,
       body: _buildBody(),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
