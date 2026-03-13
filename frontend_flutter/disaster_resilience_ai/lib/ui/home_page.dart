@@ -1538,7 +1538,6 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isHomeTab = _selectedIndex == 0;
     final pageBg = isDark ? const Color(0xFF0F140F) : const Color(0xFFF0F2F5);
     final barBg = isDark ? const Color(0xFF1B251B) : Colors.white;
     final borderColor = isDark
@@ -1547,27 +1546,25 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       backgroundColor: pageBg,
-      appBar: isHomeTab
-          ? AppBar(
-              automaticallyImplyLeading: false,
-              backgroundColor: barBg,
-              foregroundColor: isDark
-                  ? const Color(0xFFE5E7EB)
-                  : const Color(0xFF111827),
-              surfaceTintColor: Colors.transparent,
-              scrolledUnderElevation: 1,
-              elevation: 0,
-              shadowColor: Colors.transparent,
-              centerTitle: true,
-              titleSpacing: 0,
-              toolbarHeight: 64,
-              title: _buildTopBarTitle(isDark),
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(1),
-                child: Container(height: 1, color: borderColor),
-              ),
-            )
-          : null,
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        backgroundColor: barBg,
+        foregroundColor: isDark
+            ? const Color(0xFFE5E7EB)
+            : const Color(0xFF111827),
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 1,
+        elevation: 0,
+        shadowColor: Colors.transparent,
+        centerTitle: true,
+        titleSpacing: 0,
+        toolbarHeight: 64,
+        title: _buildTopBarTitle(isDark),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: borderColor),
+        ),
+      ),
       body: _buildBody(),
       floatingActionButton: _buildHomeChatFab(isDark),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
