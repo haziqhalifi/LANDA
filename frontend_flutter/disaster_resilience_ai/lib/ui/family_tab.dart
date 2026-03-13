@@ -31,6 +31,7 @@ class _FamilyTabState extends State<FamilyTab> {
   List<FamilyInvite> _invites = [];
   List<FamilyMemberLocation> _members = [];
   List<RiskZone> _riskZones = [];
+  List<EvacuationCentre> _evacuationCentres = [];
   Timer? _pollTimer;
   // Cache: userId → place name
   final Map<String, String> _placeNames = {};
@@ -78,6 +79,10 @@ class _FamilyTabState extends State<FamilyTab> {
         _riskZones = zonesJson
             .map((e) => RiskZone.fromJson(e as Map<String, dynamic>))
             .toList();
+        _evacuationCentres =
+            (mapJson['evacuation_centres'] as List<dynamic>? ?? [])
+                .map((e) => EvacuationCentre.fromJson(e as Map<String, dynamic>))
+                .toList();
         _loading = false;
         _error = null;
       });
@@ -164,8 +169,15 @@ class _FamilyTabState extends State<FamilyTab> {
   }
 
   /// Returns the worst risk zone type a member is inside, or null if none.
+  /// Returns 'evacuation_centre' if the member is within 500 m of a PPS.
   String? _zoneStatusFor(FamilyMemberLocation m) {
     if (!m.hasLocation) return null;
+    for (final centre in _evacuationCentres) {
+      final distKm = _haversineKm(
+        m.latitude!, m.longitude!, centre.latitude, centre.longitude,
+      );
+      if (distKm <= 0.5) return 'evacuation_centre';
+    }
     String? worst; // 'danger' beats 'warning' beats 'safe'
     for (final zone in _riskZones) {
       final distKm = _haversineKm(
@@ -198,6 +210,11 @@ class _FamilyTabState extends State<FamilyTab> {
 
   Widget _safetyBadge(String? zoneType) {
     final (label, color, icon) = switch (zoneType) {
+      'evacuation_centre' => (
+          _tr(en: 'SAFE AT EVACUATION CENTRE', ms: 'SELAMAT DI PPS', zh: '在疏散中心'),
+          const Color(0xFF2E7D32),
+          Icons.house_siding,
+        ),
       'danger' => (
           _tr(en: 'IN DANGER ZONE', ms: 'DALAM ZON BAHAYA', zh: '处于危险区域'),
           Colors.red,

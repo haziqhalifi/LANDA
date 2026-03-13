@@ -346,6 +346,43 @@ class _MapTabState extends State<MapTab> {
       }
     }
 
+    // Evacuation centre markers (PPS)
+    if (_mapData != null) {
+      for (final centre in _mapData!.evacuationCentres) {
+        markers.add(
+          Marker(
+            point: LatLng(centre.latitude, centre.longitude),
+            width: 52,
+            height: 52,
+            child: GestureDetector(
+              onTap: () => _showEvacCentreInfo(centre),
+              child: Center(
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2E7D32),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(48),
+                        blurRadius: 9,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.house_siding, size: 18, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
     // Community report markers
     for (final report in _reports) {
       final lat = (report['latitude'] as num).toDouble();
@@ -1489,26 +1526,9 @@ class _MapTabState extends State<MapTab> {
                     if (confidence != null)
                       _reportChip(
                         Icons.smart_toy_outlined,
-                        _tr(
-                          en: 'AI: ${(confidence * 100).toStringAsFixed(0)}% credible',
-                          id: 'AI: ${(confidence * 100).toStringAsFixed(0)}% kredibel',
-                          ms: 'AI: ${(confidence * 100).toStringAsFixed(0)}% dipercayai',
-                          zh: 'AI：可信度 ${(confidence * 100).toStringAsFixed(0)}%',
-                        ),
-                        confidence >= 0.7
-                            ? (isDark
-                                  ? const Color(0xFF86EFAC)
-                                  : Colors.green.shade700)
-                            : (isDark
-                                  ? const Color(0xFFFCD34D)
-                                  : Colors.amber.shade700),
-                        confidence >= 0.7
-                            ? (isDark
-                                  ? const Color(0xFF14532D)
-                                  : Colors.green.shade50)
-                            : (isDark
-                                  ? const Color(0xFF373018)
-                                  : Colors.amber.shade50),
+                        _aiCredLabel(confidence),
+                        _aiCredFg(confidence, isDark),
+                        _aiCredBg(confidence, isDark),
                       ),
                     if (vouches > 0)
                       _reportChip(
@@ -1594,6 +1614,156 @@ class _MapTabState extends State<MapTab> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  void _showEvacCentreInfo(EvacuationCentre centre) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final scheme = theme.colorScheme;
+    const green = Color(0xFF2E7D32);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? theme.cardColor : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: green.withAlpha(26),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.house_siding, color: green, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        centre.name,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? scheme.onSurface : const Color(0xFF1E293B),
+                        ),
+                      ),
+                      Text(
+                        _tr(
+                          en: 'PPS · Evacuation Centre',
+                          id: 'PPS · Pusat Evakuasi',
+                          ms: 'PPS · Pusat Pemindahan Sementara',
+                          zh: '临时疏散中心',
+                        ),
+                        style: const TextStyle(
+                          color: green,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Text(
+                  _tr(en: 'Occupancy: ', id: 'Hunian: ', ms: 'Orang Dalam: ', zh: '入住率：'),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: isDark ? scheme.onSurface : null,
+                  ),
+                ),
+                Text(
+                  '${centre.currentOccupancy} / ${centre.capacity}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: green,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: centre.occupancyPercent / 100,
+                minHeight: 8,
+                backgroundColor: isDark ? Colors.white24 : Colors.grey[200],
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  centre.occupancyPercent >= 80 ? Colors.orange : green,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (centre.address.isNotEmpty)
+              Row(
+                children: [
+                  Icon(
+                    Icons.location_on,
+                    size: 14,
+                    color: isDark ? scheme.onSurface.withAlpha(170) : Colors.grey[500],
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      centre.address,
+                      style: TextStyle(
+                        color: isDark ? scheme.onSurface.withAlpha(180) : Colors.grey[600],
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            if (centre.contactPhone != null) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(
+                    Icons.phone,
+                    size: 14,
+                    color: isDark ? scheme.onSurface.withAlpha(170) : Colors.grey[500],
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    centre.contactPhone!,
+                    style: TextStyle(
+                      color: isDark ? scheme.onSurface.withAlpha(180) : Colors.grey[600],
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
@@ -1772,6 +1942,24 @@ class _MapTabState extends State<MapTab> {
         ),
       ),
     );
+  }
+
+  String _aiCredLabel(double score) {
+    if (score >= 0.75) return 'AI: High';
+    if (score >= 0.50) return 'AI: Medium';
+    return 'AI: Low';
+  }
+
+  Color _aiCredFg(double score, bool isDark) {
+    if (score >= 0.75) return isDark ? const Color(0xFF86EFAC) : Colors.green.shade700;
+    if (score >= 0.50) return isDark ? const Color(0xFFFCD34D) : Colors.amber.shade700;
+    return isDark ? const Color(0xFFFCA5A5) : Colors.red.shade700;
+  }
+
+  Color _aiCredBg(double score, bool isDark) {
+    if (score >= 0.75) return isDark ? const Color(0xFF14532D) : Colors.green.shade50;
+    if (score >= 0.50) return isDark ? const Color(0xFF373018) : Colors.amber.shade50;
+    return isDark ? const Color(0xFF3E1D1D) : Colors.red.shade50;
   }
 
   Widget _reportChip(IconData icon, String label, Color fg, Color bg) {

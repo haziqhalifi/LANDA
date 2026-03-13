@@ -301,16 +301,39 @@ class _ProfileTabState extends State<ProfileTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        tr(
-                          en: 'ASEAN native languages support coming soon',
-                          ms: 'Sokongan bahasa asli ASEAN akan datang',
-                          zh: '东盟本地语言支持即将推出',
-                        ),
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: comingSoonTitle,
-                        ),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2E7D32).withAlpha(26),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFF2E7D32)),
+                            ),
+                            child: const Text(
+                              'ASEAN-Ready',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF2E7D32),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              tr(
+                                en: 'More languages coming soon',
+                                ms: 'Lebih banyak bahasa akan datang',
+                                zh: '更多语言即将推出',
+                              ),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: comingSoonTitle,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -1239,7 +1262,7 @@ class _ProfileTabState extends State<ProfileTab> {
             _buildSettingItem(
               tr(en: 'Language', ms: 'Bahasa', zh: '语言'),
               icon: Icons.translate,
-              subtitle: languageController.label,
+              subtitle: '${languageController.label}  ·  ${tr(en: "ASEAN-Ready", ms: "Sedia ASEAN", zh: "东盟就绪")}  🇲🇾 🇮🇩 🇺🇸 🇨🇳',
               onTap: _selectLanguage,
             ),
             _buildSettingItem(
