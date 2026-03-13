@@ -254,8 +254,8 @@ class _MapTabState extends State<MapTab> {
     final polygons = _filteredAdminAreas.map((area) {
       final points = area.boundary.map((p) => LatLng(p.lat, p.lon)).toList();
       final color = _hazardColor(area.hazardType);
-      // Keep DUN highlights subtle because hazards are shown by localized pins.
-      final fillAlpha = (8 + (area.riskScore * 14)).round().clamp(8, 22);
+      // Risk areas are represented directly as colored polygons.
+      final fillAlpha = (20 + (area.riskScore * 40)).round().clamp(20, 60);
 
       return Polygon(
         points: points,
@@ -272,36 +272,38 @@ class _MapTabState extends State<MapTab> {
     final markers = <Marker>[];
 
     if (_mapData != null) {
-      // Always use point-level hazards so only localized spots are shown.
-      for (final zone in _filteredZones) {
+      for (final disaster in _filteredOfficialDisasters) {
         markers.add(
           Marker(
-            point: LatLng(zone.latitude, zone.longitude),
-            width: 44,
-            height: 44,
+            point: LatLng(disaster.latitude, disaster.longitude),
+            width: 52,
+            height: 52,
             child: GestureDetector(
-              onTap: () => _showZoneInfo(zone),
+              onTap: () => _showOfficialDisasterInfo(disaster),
               child: Center(
                 child: Container(
-                  width: 22,
-                  height: 22,
+                  width: 34,
+                  height: 34,
                   decoration: BoxDecoration(
-                    color: _hazardColor(zone.hazardType),
+                    color: Colors.white,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.5),
+                    border: Border.all(
+                      color: _officialDisasterColor(disaster.hazardType),
+                      width: 3,
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withAlpha(60),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
+                        color: Colors.black.withAlpha(48),
+                        blurRadius: 9,
+                        offset: const Offset(0, 3),
                       ),
                     ],
                   ),
                   child: Center(
                     child: Icon(
-                      _hazardIcon(zone.hazardType),
-                      size: 12,
-                      color: Colors.white,
+                      _officialDisasterIcon(disaster.hazardType),
+                      size: 20,
+                      color: _officialDisasterColor(disaster.hazardType),
                     ),
                   ),
                 ),
@@ -321,28 +323,37 @@ class _MapTabState extends State<MapTab> {
       markers.add(
         Marker(
           point: LatLng(lat, lon),
-          width: 44,
-          height: 44,
+          width: 48,
+          height: 48,
           child: GestureDetector(
             onTap: () => _showReportInfo(report),
             child: Center(
               child: Container(
-                width: 24,
-                height: 24,
+                width: 30,
+                height: 30,
                 decoration: BoxDecoration(
                   color: color,
-                  borderRadius: BorderRadius.circular(5),
-                  border: Border.all(color: Colors.white, width: 1.5),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withAlpha(60),
-                      blurRadius: 4,
+                      color: color.withAlpha(85),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withAlpha(35),
+                      blurRadius: 5,
                       offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-                child: const Center(
-                  child: Icon(Icons.flag, size: 13, color: Colors.white),
+                child: Center(
+                  child: Icon(
+                    _reportMarkerIcon(type),
+                    size: 18,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
@@ -647,7 +658,22 @@ class _MapTabState extends State<MapTab> {
               textColor: isDark
                   ? scheme.onSurface.withAlpha(220)
                   : const Color(0xFF334155),
-              isSquare: true,
+              icon: Icons.flag_rounded,
+              shape: BoxShape.circle,
+            ),
+            _buildLegendItem(
+              const Color(0xFFF59E0B),
+              _tr(
+                en: 'Official Disasters',
+                id: 'Bencana resmi',
+                ms: 'Bencana rasmi',
+                zh: '官方灾害',
+              ),
+              textColor: isDark
+                  ? scheme.onSurface.withAlpha(220)
+                  : const Color(0xFF334155),
+              icon: Icons.campaign_rounded,
+              swatchFill: const Color(0xFF111827),
             ),
           ],
         ),
@@ -659,7 +685,9 @@ class _MapTabState extends State<MapTab> {
     Color color,
     String label, {
     required Color textColor,
-    bool isSquare = false,
+    IconData? icon,
+    BoxShape shape = BoxShape.circle,
+    Color? swatchFill,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -670,12 +698,15 @@ class _MapTabState extends State<MapTab> {
             width: 12,
             height: 12,
             decoration: BoxDecoration(
-              color: isSquare ? color : color.withAlpha(128),
-              borderRadius: BorderRadius.circular(isSquare ? 2 : 3),
+              color: swatchFill ?? color.withAlpha(128),
+              shape: shape,
+              borderRadius: shape == BoxShape.circle
+                  ? null
+                  : BorderRadius.circular(3),
               border: Border.all(color: color, width: 1.5),
             ),
-            child: isSquare
-                ? const Icon(Icons.flag, size: 7, color: Colors.white)
+            child: icon != null
+                ? Icon(icon, size: 7, color: Colors.white)
                 : null,
           ),
           const SizedBox(width: 6),
@@ -1096,6 +1127,13 @@ class _MapTabState extends State<MapTab> {
         .toList();
   }
 
+  List<OfficialDisaster> get _filteredOfficialDisasters {
+    if (_mapData == null) return const [];
+    return _mapData!.officialDisasters
+        .where((d) => _hazardFilter == 'all' || d.hazardType == _hazardFilter)
+        .toList();
+  }
+
   LatLng _areaCentroid(AdminArea area) {
     if (area.boundary.isEmpty) return _defaultCentre;
     final lat =
@@ -1115,6 +1153,35 @@ class _MapTabState extends State<MapTab> {
       'blocked_road' => const Color(0xFF7C3AED),
       'injury' || 'medical' => const Color(0xFFDB2777),
       _ => const Color(0xFF374151),
+    };
+  }
+
+  IconData _reportMarkerIcon(String reportType) {
+    return switch (reportType) {
+      'flood' || 'water_rising' => Icons.flood_rounded,
+      'landslide' => Icons.terrain,
+      'fire' => Icons.local_fire_department_rounded,
+      'blocked_road' => Icons.block_rounded,
+      'injury' || 'medical' => Icons.medical_services_rounded,
+      _ => Icons.flag_rounded,
+    };
+  }
+
+  Color _officialDisasterColor(String hazardType) {
+    return switch (hazardType) {
+      'flood' => const Color(0xFF38BDF8),
+      'landslide' => const Color(0xFFF59E0B),
+      'fire' => const Color(0xFFEF4444),
+      _ => const Color(0xFFFACC15),
+    };
+  }
+
+  IconData _officialDisasterIcon(String hazardType) {
+    return switch (hazardType) {
+      'flood' => Icons.flood_rounded,
+      'landslide' => Icons.warning_amber_rounded,
+      'fire' => Icons.local_fire_department_rounded,
+      _ => Icons.gpp_maybe_rounded,
     };
   }
 
@@ -1404,6 +1471,182 @@ class _MapTabState extends State<MapTab> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  void _showOfficialDisasterInfo(OfficialDisaster disaster) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final scheme = theme.colorScheme;
+    final color = _officialDisasterColor(disaster.hazardType);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? theme.cardColor : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111827),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: color, width: 2),
+                  ),
+                  child: Icon(
+                    _officialDisasterIcon(disaster.hazardType),
+                    color: color,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        disaster.title,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: isDark
+                              ? scheme.onSurface
+                              : const Color(0xFF1E293B),
+                        ),
+                      ),
+                      Text(
+                        _tr(
+                          en: 'Official NADMA incident',
+                          id: 'Insiden resmi NADMA',
+                          ms: 'Insiden rasmi NADMA',
+                          zh: 'NADMA 官方事件',
+                        ),
+                        style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              [
+                disaster.districtName,
+                disaster.stateName,
+              ].where((part) => part.isNotEmpty).join(', '),
+              style: TextStyle(
+                color: isDark
+                    ? scheme.onSurface.withAlpha(210)
+                    : Colors.grey[700],
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _reportChip(
+                  Icons.shield_outlined,
+                  disaster.status,
+                  color,
+                  isDark ? const Color(0xFF1F2937) : color.withAlpha(24),
+                ),
+                if (disaster.evacuationCentres > 0)
+                  _reportChip(
+                    Icons.house_siding_outlined,
+                    _tr(
+                      en: '${disaster.evacuationCentres} PPS',
+                      id: '${disaster.evacuationCentres} PPS',
+                      ms: '${disaster.evacuationCentres} PPS',
+                      zh: '${disaster.evacuationCentres} 个疏散中心',
+                    ),
+                    isDark ? const Color(0xFFBFDBFE) : Colors.blue.shade700,
+                    isDark ? const Color(0xFF192A3A) : Colors.blue.shade50,
+                  ),
+                if (disaster.affectedFamilies > 0)
+                  _reportChip(
+                    Icons.groups_2_outlined,
+                    _tr(
+                      en: '${disaster.affectedFamilies} families',
+                      id: '${disaster.affectedFamilies} keluarga',
+                      ms: '${disaster.affectedFamilies} keluarga',
+                      zh: '${disaster.affectedFamilies} 户家庭',
+                    ),
+                    isDark ? const Color(0xFFFDE68A) : Colors.amber.shade800,
+                    isDark ? const Color(0xFF3A2F19) : Colors.amber.shade50,
+                  ),
+                if (disaster.affectedPeople > 0)
+                  _reportChip(
+                    Icons.people_alt_outlined,
+                    _tr(
+                      en: '${disaster.affectedPeople} people',
+                      id: '${disaster.affectedPeople} orang',
+                      ms: '${disaster.affectedPeople} orang',
+                      zh: '${disaster.affectedPeople} 人',
+                    ),
+                    isDark ? const Color(0xFFFCA5A5) : Colors.red.shade700,
+                    isDark ? const Color(0xFF3E1D1D) : Colors.red.shade50,
+                  ),
+                if (disaster.specialCase)
+                  _reportChip(
+                    Icons.priority_high_rounded,
+                    _tr(
+                      en: 'Special case',
+                      id: 'Kasus khusus',
+                      ms: 'Kes khas',
+                      zh: '特殊事件',
+                    ),
+                    isDark ? const Color(0xFFE9D5FF) : Colors.purple.shade700,
+                    isDark ? const Color(0xFF2E1F3A) : Colors.purple.shade50,
+                  ),
+              ],
+            ),
+            if ((disaster.startedAt ?? '').isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Text(
+                _tr(
+                  en: 'Started: ${disaster.startedAt}',
+                  id: 'Mulai: ${disaster.startedAt}',
+                  ms: 'Bermula: ${disaster.startedAt}',
+                  zh: '开始时间：${disaster.startedAt}',
+                ),
+                style: TextStyle(
+                  color: isDark
+                      ? scheme.onSurface.withAlpha(180)
+                      : Colors.grey[600],
+                  fontSize: 12,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+          ],
+        ),
       ),
     );
   }
