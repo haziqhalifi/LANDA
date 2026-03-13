@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -8,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import 'package:disaster_resilience_ai/l10n/app_localizations.dart';
+import 'package:disaster_resilience_ai/models/family_model.dart';
 import 'package:disaster_resilience_ai/models/risk_map_model.dart';
 import 'package:disaster_resilience_ai/services/api_service.dart';
 import 'package:disaster_resilience_ai/ui/submit_report_page.dart';
@@ -46,6 +48,10 @@ class _MapTabState extends State<MapTab> {
   int _reportLoadGeneration = 0;
   bool _mapReady = false;
 
+  // ── Family member locations ───────────────────────────────────────────────
+  List<FamilyMemberLocation> _familyMembers = [];
+  Timer? _familyPollTimer;
+
   // Default centre: Kuantan, Pahang
   final LatLng _defaultCentre = const LatLng(3.8077, 103.3260);
 
@@ -54,6 +60,11 @@ class _MapTabState extends State<MapTab> {
     super.initState();
     _loadMapData();
     _getUserLocation();
+    _loadFamilyLocations();
+    _familyPollTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _loadFamilyLocations(),
+    );
   }
 
   @override
@@ -61,6 +72,7 @@ class _MapTabState extends State<MapTab> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.accessToken != widget.accessToken) {
       _scheduleReportRefresh(force: true);
+      _loadFamilyLocations();
     }
   }
 
@@ -126,6 +138,7 @@ class _MapTabState extends State<MapTab> {
   @override
   void dispose() {
     _reportRefreshDebounce?.cancel();
+    _familyPollTimer?.cancel();
     _mapController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -186,6 +199,25 @@ class _MapTabState extends State<MapTab> {
       }
       _scheduleReportRefresh(force: true);
     }
+  }
+
+  Future<void> _loadFamilyLocations() async {
+    if (widget.accessToken.isEmpty) {
+      if (mounted && _familyMembers.isNotEmpty) {
+        setState(() => _familyMembers = []);
+      }
+      return;
+    }
+    try {
+      final payload = await _api.fetchFamilyLocations(
+        accessToken: widget.accessToken,
+      );
+      final rows = (payload['members'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map((e) => FamilyMemberLocation.fromJson(e))
+          .toList();
+      if (mounted) setState(() => _familyMembers = rows);
+    } catch (_) {}
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -362,8 +394,57 @@ class _MapTabState extends State<MapTab> {
       );
     }
 
+    // Family member markers
+    for (final member in _familyMembers) {
+      if (!member.hasLocation) continue;
+      final zone = _zoneStatusForLatLon(member.latitude!, member.longitude!);
+      final pinColor = switch (zone) {
+        'danger' => Colors.red,
+        'warning' => Colors.orange,
+        _ => const Color(0xFF2E7D32),
+      };
+      markers.add(
+        Marker(
+          point: LatLng(member.latitude!, member.longitude!),
+          width: 90,
+          height: 60,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: pinColor,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  member.username,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(Icons.location_on, color: pinColor, size: 28),
+            ],
+          ),
+        ),
+      );
+    }
+
     // User location marker
     if (_userLocation != null) {
+      final userZone = _zoneStatusForLatLon(
+        _userLocation!.latitude,
+        _userLocation!.longitude,
+      );
+      final dotColor = switch (userZone) {
+        'danger' => Colors.red,
+        'warning' => Colors.orange,
+        _ => Colors.blue,
+      };
       markers.add(
         Marker(
           point: _userLocation!,
@@ -374,11 +455,11 @@ class _MapTabState extends State<MapTab> {
               width: 20,
               height: 20,
               decoration: BoxDecoration(
-                color: Colors.blue.withAlpha(50),
+                color: dotColor.withAlpha(50),
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [
-                  BoxShadow(color: Colors.blue.withAlpha(80), blurRadius: 6),
+                  BoxShadow(color: dotColor.withAlpha(80), blurRadius: 6),
                 ],
               ),
               child: Center(
@@ -386,7 +467,7 @@ class _MapTabState extends State<MapTab> {
                   width: 10,
                   height: 10,
                   decoration: BoxDecoration(
-                    color: Colors.blue[700],
+                    color: dotColor,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -675,6 +756,21 @@ class _MapTabState extends State<MapTab> {
               icon: Icons.campaign_rounded,
               swatchFill: const Color(0xFF111827),
             ),
+            if (_familyMembers.any((m) => m.hasLocation))
+              _buildLegendItem(
+                const Color(0xFF2E7D32),
+                _tr(
+                  en: 'Family Member',
+                  id: 'Anggota Keluarga',
+                  ms: 'Ahli Keluarga',
+                  zh: '家庭成员',
+                ),
+                textColor: isDark
+                    ? scheme.onSurface.withAlpha(220)
+                    : const Color(0xFF334155),
+                icon: Icons.person_pin_circle,
+                shape: BoxShape.circle,
+              ),
           ],
         ),
       ),
@@ -1106,6 +1202,34 @@ class _MapTabState extends State<MapTab> {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+
+  double _haversineKm(double lat1, double lon1, double lat2, double lon2) {
+    const r = 6371.0;
+    final dLat = (lat2 - lat1) * math.pi / 180;
+    final dLon = (lon2 - lon1) * math.pi / 180;
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180) *
+            math.cos(lat2 * math.pi / 180) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+  }
+
+  /// Returns 'danger', 'warning', 'safe', or null if outside all zones.
+  String? _zoneStatusForLatLon(double lat, double lon) {
+    if (_mapData == null) return null;
+    String? worst;
+    for (final zone in _mapData!.riskZones) {
+      final distKm = _haversineKm(lat, lon, zone.latitude, zone.longitude);
+      if (distKm <= zone.radiusKm) {
+        if (zone.zoneType == 'danger') return 'danger';
+        if (zone.zoneType == 'warning' && worst != 'danger') worst = 'warning';
+        if (zone.zoneType == 'safe' && worst == null) worst = 'safe';
+      }
+    }
+    return worst;
+  }
 
   List<RiskZone> get _filteredZones {
     if (_mapData == null) return const [];
